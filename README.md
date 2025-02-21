@@ -1,5 +1,7 @@
 # Zero-Human-Knowledge NN Training with Random Walks for Puzzle Solving
 
+This repository contains the code for the publication [arxiv.org/abs/2212.01175](https://www.arxiv.org/abs/2502.13266).
+
 This program (as part of the CayleyPy project) provides tools to train and test models capable of solving NxNxN Rubik's cubes. It includes two main scripts: `train.py` for training a model and `test.py` for testing cube solutions. 
 
 **`train.py`** trains a model to predict the diffusion distance, which is calculated using random walks from the solved cube state. The diffusion distance serves as a metric that creates a good ordering between cube states, simplifying the search for solutions.
