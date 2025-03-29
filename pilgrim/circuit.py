@@ -21,6 +21,9 @@ def get_perm_ccnot(m, device='cpu'):
              for ctrl1, ctrl2 in itertools.combinations(range(m), 2) if target not in (ctrl1, ctrl2)]
     return torch.stack(perms)
 
+def get_all_moves(m, device='cpu'):
+    return torch.cat((get_perm_x(m), get_perm_cnot(m), get_perm_ccnot(m))).to(device)
+
 def get_ic_cnot(m, device='cpu'):
     # Generate initial by CNOT
     idx = torch.arange(2**m, dtype=torch.long, device=device)

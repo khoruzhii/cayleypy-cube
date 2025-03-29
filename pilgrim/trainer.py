@@ -4,7 +4,6 @@ import time
 import pandas as pd
 import schedulefree
 import math
-from .model import Pilgrim
 from .circuit import get_perm_x, get_perm_cnot, get_perm_ccnot, get_ic_cnot
 
 class Trainer:
@@ -12,7 +11,6 @@ class Trainer:
                  net, num_epochs, device, 
                  batch_size=10000, lr=0.001, name="", K_min=1, K_max=55, 
                  m=None, 
-                 optimizer='Adam',
                  gate_cost=(1, 1, 1), gate_prob=(1, 1, 1)
                 ):
         self.net = net.to(device)
@@ -31,9 +29,9 @@ class Trainer:
         self.K_max = K_max
         self.walkers_num = 1_000_000 // self.K_max
         
-        self.all_moves = torch.cat((get_perm_x(m), get_perm_cnot(m), get_perm_ccnot(m)))
-        self.n_gens = all_moves.size(0)
-        self.state_size = all_moves.size(1)
+        self.all_moves = torch.cat((get_perm_x(m), get_perm_cnot(m), get_perm_ccnot(m))).to(device)
+        self.n_gens = self.all_moves.size(0)
+        self.state_size = self.all_moves.size(1)
         
         self.V0 = get_ic_cnot(m)[-1].to(device)
         
@@ -61,17 +59,18 @@ class Trainer:
         new_states = torch.gather(states, 1, self.all_moves[next_moves])
         return new_states, next_moves
 
-    def generate_random_walks(self, k=1000, K_min=1, K_max=30):
+    def generate_random_walks(self):
         """Generate random walks for training."""
-        X = torch.zeros(((K_max-K_min+1)*k, self.state_size), dtype=torch.int8, device=self.device)
-        Y = torch.zeros(((K_max-K_min+1)*k,), device=self.device) # gates cost
+        k = self.walkers_num
+        X = torch.zeros(((self.K_max-self.K_min+1)*k, self.state_size), dtype=torch.int8, device=self.device)
+        Y = torch.zeros(((self.K_max-self.K_min+1)*k,), device=self.device) # gates cost
         
 
-        for j, K in enumerate(range(K_min, K_max + 1)):
+        for j, K in enumerate(range(self.K_min, self.K_max + 1)):
             states, last_moves = self.V0.repeat(k, 1), None
             for _ in range(K):
                 states, last_moves = self.do_random_step(states, last_moves)
-                Y += self.gates_costs[last_moves]
+                Y[j*k:(j+1)*k] += self.gate_costs[last_moves]
             X[j*k:(j+1)*k] = states
 
         perm = torch.randperm(X.size(0), device=self.device)
@@ -83,10 +82,8 @@ class Trainer:
         total_batches = X.size(0) // self.batch_size
         
         for i in range(0, X.size(0), self.batch_size):
-            data = X[i:i + self.batch_size]
-            target = Y[i:i + self.batch_size]
-            output = self.net(data)
-            loss = self.criterion(output, target)
+            output = self.net(X[i:i + self.batch_size].float())
+            loss = self.criterion(output, Y[i:i + self.batch_size])
             
             self.optimizer.zero_grad()
             loss.backward()
@@ -94,7 +91,7 @@ class Trainer:
 
             avg_loss += loss.item()
            
-        return avg_loss / total_batches if total_batches > 0 else avg_loss
+        return avg_loss / total_batches
 
     def run(self):
         for epoch in range(self.num_epochs):
@@ -102,12 +99,12 @@ class Trainer:
 
             # Data generation
             data_gen_start = time.time()
-            X, Y, Z = self.generate_random_walks(k=self.walkers_num, K_min=self.K_min, K_max=self.K_max)
+            X, Y = self.generate_random_walks()
             data_gen_time = time.time() - data_gen_start
 
             # Training step
             epoch_start = time.time()
-            train_loss = self._train_epoch(X, Y.float())
+            train_loss = self._train_epoch(X, Y)
             epoch_time = time.time() - epoch_start
 
             # Log training data
