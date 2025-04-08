@@ -55,20 +55,6 @@ class Searcher:
             moved_states[i:i+self.batch_size] = torch.gather(states[i:i+self.batch_size], 1, self.all_moves[moves[i:i+self.batch_size]])
         return moved_states
     
-#     def do_greedy_step(self, states, states_bad_hashed, B=1000):
-#         """Perform a greedy step to find the best neighbors."""
-#         idx0 = torch.arange(states.size(0), device=self.device).repeat_interleave(self.n_gens)
-#         moves = torch.arange(self.n_gens, device=self.device).repeat(states.size(0))
-        
-#         neighbors = self.get_neighbors(states).flatten(end_dim=1)
-#         neighbors, idx1 = self.get_unique_states(neighbors, states_bad_hashed)
-        
-#         # Predict values for the neighboring states
-#         value = self.pred_d(neighbors)[0]
-#         idx2 = torch.argsort(value)[:B]
-        
-#         return neighbors[idx2], value[idx2], moves[idx1[idx2]], idx0[idx1[idx2]] 
-   
     def do_greedy_step(self, states, states_bad_hashed, B=1000):
         """Perform a greedy step to find the best neighbors."""
         idx0 = torch.arange(states.size(0), device=self.device).repeat_interleave(self.n_gens)

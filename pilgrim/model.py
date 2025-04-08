@@ -37,11 +37,11 @@ class ResidualBlock(nn.Module):
             raise ValueError(f"Unknown activation function: {name}")
 
 class Pilgrim(nn.Module):
-    def __init__(self, state_size, hd1=5000, hd2=1000, nrd=2, output_dim=1, dropout_rate=0.1, activation_function="relu", use_batch_norm=True):
+    def __init__(self, state_size, hd1=5000, hd2=1000, nrd=2, output_dim=1, dropout_rate=0.1, activation_function="relu", use_batch_norm=True, num_classes=6):
         super(Pilgrim, self).__init__()
         self.dtype = torch.float32
         self.state_size = state_size
-        self.num_classes = 6
+        self.num_classes = num_classes
         self.hd1 = hd1
         self.hd2 = hd2
         self.nrd = nrd

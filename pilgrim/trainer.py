@@ -12,7 +12,7 @@ class Trainer:
                  batch_size=10000, lr=0.001, name="", K_min=1, K_max=55, 
                  all_moves=None, inverse_moves=None, V0=None, 
                  optimizer='Adam', # Adam or AdamSF
-                 α=0.001 #0.001, 1
+                 α=0.001, # Not supported for this branch
                 ):
         self.net = net.to(device)
         self.α = α
@@ -40,9 +40,6 @@ class Trainer:
         self.state_size = all_moves.size(1)
         self.inverse_moves = inverse_moves
         self.V0 = V0
-#         self.test_data = torch.load('datasets/all_cube4.pt', map_location=device, weights_only=False)
-#         self.test_logs = torch.zeros((num_epochs, self.test_data.size(0)))
-#         self.test_counter = 0
         os.makedirs(self.log_dir, exist_ok=True)
         os.makedirs(self.weights_dir, exist_ok=True)
 
@@ -56,7 +53,7 @@ class Trainer:
 
     def generate_random_walks(self, k=1000, K_min=1, K_max=30):
         """Generate random walks for training."""
-        X = torch.zeros(((K_max - K_min + 1) * k, self.state_size), dtype=torch.int8, device=self.device)
+        X = torch.zeros(((K_max - K_min + 1) * k, self.state_size), dtype=self.V0.dtype, device=self.device)
         Y = torch.arange(K_min, K_max + 1, device=self.device).repeat_interleave(k)
 
         for j, K in enumerate(range(K_min, K_max + 1)):
@@ -78,18 +75,13 @@ class Trainer:
             data = X[i:i + self.batch_size]
             target = Y[i:i + self.batch_size]
             output = self.net(data)
-            loss = self.criterion(output, output + self.α * (target - output))
+            loss = self.criterion(output, target)
             
             self.optimizer.zero_grad()
             loss.backward()
             self.optimizer.step()
 
             avg_loss += loss.item()
-           
-#         with torch.no_grad():
-#             output_test = self.net(self.test_data)
-#             self.test_logs[self.test_counter] = output_test
-#             self.test_counter += 1
 
         return avg_loss / total_batches if total_batches > 0 else avg_loss
 
@@ -122,7 +114,6 @@ class Trainer:
             if (self.epoch & (self.epoch - 1)) == 0:
                 weights_file = f"{self.weights_dir}/{self.name}_{self.id}_e{self.epoch:05d}.pth"
                 torch.save(self.net.state_dict(), weights_file)
-#                 torch.save(self.test_logs, f'outputs/{self.name}_{self.id}.pt')
 
                 # Print saving information with timestamp and train loss
                 timestamp = time.strftime('%Y-%m-%d %H:%M:%S', time.localtime())
