@@ -15,7 +15,7 @@ class Searcher:
         self.n_gens = all_moves.size(0)
         self.state_size = all_moves.size(1)
         self.device = device or torch.device("cuda" if torch.cuda.is_available() else "cpu")
-        self.hash_vec = torch.randint(0, int(1e15), (self.state_size,), device=self.device)
+        self.hash_vec = torch.randint(0, int(1e15), (self.state_size,), device=self.device, dtype=torch.int64)
         self.verbose = verbose
     
     def get_unique_states(self, states, states_bad_hashed):
@@ -67,7 +67,7 @@ class Searcher:
             neighbors_hashed[i*self.n_gens:(i+self.batch_size)*self.n_gens] = state2hash(neighbors, self.hash_vec, self.batch_size)
         idx1 = self.get_unique_hashed_states_idx(neighbors_hashed, states_bad_hashed)
         
-        value = torch.empty(idx1.size(0), dtype=torch.float32, device=self.device)
+        value = torch.empty(idx1.size(0), dtype=torch.float16, device=self.device)
         for i in range(0, idx1.size(0), self.batch_size):
             batch_states = self.apply_move(states[idx0[idx1[i:i+self.batch_size]]], moves[idx1[i:i+self.batch_size]])
             value[i:i+self.batch_size] = self.pred_d(batch_states)[0]

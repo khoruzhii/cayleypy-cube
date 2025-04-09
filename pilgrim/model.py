@@ -117,7 +117,7 @@ def batch_process(model, data, device, batch_size):
     model.eval()
     model.to(device)
 
-    outputs = torch.empty(data.size(0), dtype=torch.float32, device=device)
+    outputs = torch.empty(data.size(0), dtype=torch.float16, device=device)
 
     # Process each batch
     for i in range(0, data.size(0), batch_size):

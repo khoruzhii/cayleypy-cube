@@ -8,11 +8,12 @@ from pilgrim import count_parameters, generate_inverse_moves, load_cube_data
 
 def main():
     parser = argparse.ArgumentParser(description="Test Pilgrim Model")
-    parser.add_argument("--cube_size", type=int, required=True, help="Cube size")
-    parser.add_argument("--cube_type", type=str, choices=["qtm", "all"], required=True, help="Cube type (qtm or all)")
-    parser.add_argument("--tests", type=str, default='', help="Path to the tests.")
-    parser.add_argument("--weights", type=str, required=True, help="Path to the model weights")
-    parser.add_argument("--B", type=int, default=4096, help="Beam size")
+    parser.add_argument("--group_id", type=int, help="Group ID.")
+    parser.add_argument("--target_id", type=int, default=0, help="Target ID.")
+    parser.add_argument("--dataset", type=str, default='rnd', help="Type of dataset, 'santa' or 'rnd'.")
+    parser.add_argument("--model_id", type=int, required=True, help="Model ID.")
+    parser.add_argument("--epoch", type=int, required=True, help="Number of epochs to train model.")
+    parser.add_argument("--B", type=int, default=2**18, help="Beam size")
     parser.add_argument("--num_attempts", type=int, default=2, help="Number of allowed restarts.")
     parser.add_argument("--num_steps", type=int, default=200, help="Number of allowed steps in one beam search run.")
     parser.add_argument("--tests_num", type=int, default=10, help="Number of tests to run")
@@ -30,7 +31,7 @@ def main():
     forest_dir = "forest"
     
     # Load model info
-    with open(f"{log_dir}/model_{'_'.join(args.weights.split('/')[-1].split('_')[:-1])}.json", "r") as json_file:
+    with open(f"{log_dir}/model_p{int(args.group_id):03d}-t{int(args.target_id):03d}_{args.model_id}.json", "r") as json_file:
         info = json.load(json_file)
     
     # Set device (GPU if available, otherwise CPU)
@@ -39,24 +40,33 @@ def main():
     timestamp = time.strftime('%Y-%m-%d %H:%M:%S', time.localtime())
     print(f"[{timestamp}] Start testing with {device}.")
 
-    # Load cube data (moves and names)
-    all_moves, move_names = load_cube_data(args.cube_size, args.cube_type, device)
+    # Load group data (moves, names, target)
+    with open(f'generators/p{int(args.group_id):03d}.json', 'r') as f:
+        all_moves, move_names = json.load(f).values()
+        all_moves = torch.tensor(all_moves, dtype=torch.int64, device=device)
+    V0 = torch.load(f"targets/p{int(args.group_id):03d}-t{int(args.target_id):03d}.pt", weights_only=True, map_location=device)
 
-    # Derive important cube parameters from the loaded data
+    # Derive important group parameters from the loaded data
     n_gens = all_moves.size(0)  # Number of moves
     state_size = all_moves.size(1)  # Size of the state representation
-    face_size = state_size // 6  # Size of one face of the cube
-    
+    num_classes = torch.unique(V0).size(0)
+    print(f"Group info:")
+    print(f"  # generators   {n_gens}")
+    print(f"  # classes      {num_classes}")
+    print(f"  state size     {state_size}")
+
     # Generate inverse moves
     inverse_moves = torch.tensor(generate_inverse_moves(move_names), dtype=torch.int64, device=device)
-    V0 = torch.arange(6, dtype=torch.int8, device=device).repeat_interleave(face_size)
 
     # Load model and weights
-    model = Pilgrim(state_size=state_size, 
+    model = Pilgrim(num_classes=num_classes, state_size=state_size, 
                     hd1=info['hd1'], hd2=info['hd2'], nrd=info['nrd'], 
                     activation_function=info.get('activation', 'relu'), 
                     use_batch_norm=info.get('use_batch_norm', True))
-    model.load_state_dict(torch.load(args.weights, weights_only=False, map_location=device))
+    model.load_state_dict(torch.load(
+        f"weights/p{int(args.group_id):03d}-t{int(args.target_id):03d}_{args.model_id}_e{args.epoch:05d}.pth", 
+        weights_only=False, map_location=device
+    ))
     model.eval()
     
     # Fix float16
@@ -64,30 +74,23 @@ def main():
     model.dtype = torch.float16
     
     # Load test dataset
-    if len(args.tests) == 0:
-        tests_path = f"datasets/{args.cube_type}_cube{args.cube_size}.pt"
-    else:
-        tests_path = args.tests
+    tests_path = f"datasets/p{int(args.group_id):03d}-t{int(args.target_id):03d}-{args.dataset}.pt"
     tests = torch.load(tests_path, weights_only=False, map_location=device)
     tests = tests[args.shift:args.shift+args.tests_num]
-    tests = tests.to(device)
+    args.tests_num = tests.size(0)
+    print(f"Test dataset size: {args.tests_num}")
 
     # Initialize Searcher object
     searcher = Searcher(model=model, all_moves=all_moves, V0=V0, device=device, verbose=args.verbose)
-    
-    # Extract epoch information from weights file name
-    epoch = args.weights.split('_')[-1][:-4]
-    
+
     # Prepare log file
     os.makedirs(log_dir, exist_ok=True)
     log_file_add = ""
-    if len(args.tests) > 0:
-        log_file_add = log_file_add + "_tests-" + args.tests.split("/")[1].split(".")[0]
     if args.shift > 0:
         log_file_add = log_file_add + f"_shift{args.shift}"
     if args.skip_list is not None:
         log_file_add = log_file_add + f"_skip{args.skip_list}"
-    log_file = f"{log_dir}/test_{info['model_name']}_{info['model_id']}_{epoch}_B{args.B}{log_file_add}.json"
+    log_file = f"{log_dir}/test_p{int(args.group_id):03d}-t{int(args.target_id):03d}-{args.dataset}_{args.model_id}_{args.epoch}_B{args.B}{log_file_add}.json"
 
     results = []
     total_length = 0
