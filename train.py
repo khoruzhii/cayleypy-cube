@@ -17,12 +17,10 @@ def save_model_id(model_id):
     if not os.path.exists(model_id_file):
         with open(model_id_file, "w") as f:
             f.write(f"{model_id}\n")
-        print(f"Created new model_id file and saved model_id: {model_id}")
     else:
         # Append the model_id to the file
         with open(model_id_file, "a") as f:
             f.write(f"{model_id}\n")
-        print(f"Appended model_id: {model_id} to existing file")
 
 def main():
     # Set up argument parser
