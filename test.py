@@ -154,7 +154,7 @@ def main():
     # Print completion message with average solution length
     print(f"Test completed in {(t2 - t1):.2f}s.")
     print(f"Average solution length: {avg_length:.2f}.")
-    print(f"Solved {len(solved_results)}/{args.tests_num} cubes.")
+    print(f"Solved {len(solved_results)}/{args.tests_num} scrambles.")
     print(f"Results saved to {log_file}.")
 
 if __name__ == "__main__":
