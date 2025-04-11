@@ -2,7 +2,6 @@ import torch
 import os
 import time
 import pandas as pd
-import schedulefree
 import math
 from .model import Pilgrim
 
@@ -21,12 +20,7 @@ class Trainer:
         self.num_epochs = num_epochs
         self.batch_size = batch_size
         self.criterion = torch.nn.MSELoss()
-        if optimizer == 'Adam':
-            self.optimizer = torch.optim.Adam(self.net.parameters(), lr=lr)
-        elif optimizer == 'AdamSF':
-            self.optimizer = schedulefree.AdamWScheduleFree(self.net.parameters(), lr=lr)
-        else:
-            raise ValueError(f'Wrong optimizer value ({optimizer}). It can be "Adam" or "AdamSF".')
+        self.optimizer = torch.optim.Adam(self.net.parameters(), lr=lr)
         self.epoch = 0
         self.id = int(time.time())
         self.log_dir = "logs"
