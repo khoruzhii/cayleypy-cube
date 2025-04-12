@@ -46,19 +46,19 @@ class Trainer:
         return new_states, next_moves
 
     def generate_random_walks(self, k=1000, K_min=1, K_max=30):
-        """Generate random walks for training."""
-        X = torch.zeros(((K_max - K_min + 1) * k, self.state_size), dtype=self.V0.dtype, device=self.device)
+        """Random walks from K_min to K_max steps with k walkers."""
+        total = k * (K_max - K_min + 1)
         Y = torch.arange(K_min, K_max + 1, device=self.device).repeat_interleave(k)
-
-        for j, K in enumerate(range(K_min, K_max + 1)):
-            states = self.V0.repeat(k, 1)
-            last_moves = torch.full((k,), -1, dtype=torch.int64, device=self.device)
-            for _ in range(K):
-                states, last_moves = self.do_random_step(states, last_moves)
-            X[j * k:(j + 1) * k] = states
-
-        perm = torch.randperm(X.size(0), device=self.device)
-        return X[perm], Y[perm]
+        states = self.V0.repeat(total, 1)
+        last_moves = torch.full((total,), -1, dtype=torch.int64, device=self.device)
+        for t in range(K_max):
+            cutoff = 0 if t < K_min else k * (t - K_min + 1)
+            if cutoff < total:
+                states[cutoff:], last_moves[cutoff:] = self.do_random_step(states[cutoff:], last_moves[cutoff:])
+            else:
+                break
+        perm = torch.randperm(total, device=self.device)
+        return states[perm], Y[perm]
         
     def _train_epoch(self, X, Y):
         self.net.train()
