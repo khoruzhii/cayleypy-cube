@@ -77,12 +77,12 @@ triples=(
 # ---------- main loop ----------
 for triple in "${triples[@]}"; do
     IFS=' ' read -r gid tid kmax <<< "$triple"
-    echo "\n\n===== group_id=$gid  target_id=$tid  K_max=$kmax ====="
+    echo "===== group_id=$gid  target_id=$tid  K_max=$kmax ====="
 
-    echo "\n[TRAIN]"
+    echo "[TRAIN]"
     train "$gid" "$tid" "$kmax"
 
-    echo "\n[TEST ]"
+    echo "[TEST ]"
     test  "$gid" "$tid" "$kmax"
 
     echo
