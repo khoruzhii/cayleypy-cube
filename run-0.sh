@@ -10,11 +10,11 @@ train() {
     python train.py \
         --group_id  "$gid" \
         --target_id "$tid" \
-        --epochs    64 \
+        --epochs    1024 \
         --hd1       1024 \
         --hd2       256 \
         --nrd       1 \
-        --batch_size 20000 \
+        --batch_size 10000 \
         --K_max     "$kmax" \
         --device_id 0
 }
@@ -32,7 +32,33 @@ test() {
         --target_id  "$tid" \
         --tests_num  100 \
         --dataset    santa \
-        --epoch      64 \
+        --epoch      16 \
+        --model_id   "$model_id" \
+        --num_steps  $((2 * kmax)) \
+        --num_attempts 1 \
+        --verbose    0 \
+        --B          1048576 \
+        --device_id 0
+
+    python test.py \
+        --group_id   "$gid" \
+        --target_id  "$tid" \
+        --tests_num  100 \
+        --dataset    santa \
+        --epoch      128 \
+        --model_id   "$model_id" \
+        --num_steps  $((2 * kmax)) \
+        --num_attempts 1 \
+        --verbose    0 \
+        --B          1048576 \
+        --device_id 0
+
+    python test.py \
+        --group_id   "$gid" \
+        --target_id  "$tid" \
+        --tests_num  100 \
+        --dataset    santa \
+        --epoch      1024 \
         --model_id   "$model_id" \
         --num_steps  $((2 * kmax)) \
         --num_attempts 1 \
