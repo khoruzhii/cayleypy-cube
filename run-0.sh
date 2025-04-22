@@ -15,7 +15,8 @@ train() {
         --hd2       256 \
         --nrd       1 \
         --batch_size 20000 \
-        --K_max     "$kmax"
+        --K_max     "$kmax" \
+        --device_id 0
 }
 
 test() {
@@ -36,7 +37,8 @@ test() {
         --num_steps  $((2 * kmax)) \
         --num_attempts 1 \
         --verbose    0 \
-        --B          1048576
+        --B          1048576 \
+        --device_id 0
 }
 
 # ---------- job list ----------
