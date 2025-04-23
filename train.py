@@ -16,11 +16,11 @@ def save_model_id(model_id):
     # Check if the file exists, if not create it and write the model_id
     if not os.path.exists(model_id_file):
         with open(model_id_file, "w") as f:
-            f.write(f"{model_id}\n")
+            f.write(f"\n{model_id}")
     else:
         # Append the model_id to the file
         with open(model_id_file, "a") as f:
-            f.write(f"{model_id}\n")
+            f.write(f"\n{model_id}")
 
 def main():
     # Set up argument parser
@@ -53,6 +53,7 @@ def main():
 
     # Set device (GPU if available, otherwise CPU)
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu", args.device_id)
+#     device = torch.device("cpu")
     print(f"Start training with {device}.")
 
     # Load group data (moves, names, target)
@@ -93,6 +94,9 @@ def main():
         dropout_rate=args.dropout,
         activation_function=args.activation
     ).to(device)
+    
+    if V0.min() < 0:
+        model.z_add = - V0.min().item()
     
     if len(args.weights) > 0:
         model.load_state_dict(torch.load(f"weights/{args.weights}.pth", weights_only=True, map_location=device))

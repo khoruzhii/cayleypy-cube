@@ -73,6 +73,9 @@ def main():
     model = model.half()
     model.dtype = torch.float16
     
+    if V0.min() < 0:
+        model.z_add = -V0.min().item()
+    
     # Load test dataset
     tests_path = f"datasets/p{int(args.group_id):03d}-t{int(args.target_id):03d}-{args.dataset}.pt"
     tests = torch.load(tests_path, weights_only=False, map_location=device)

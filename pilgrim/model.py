@@ -46,6 +46,7 @@ class Pilgrim(nn.Module):
         self.hd2 = hd2
         self.nrd = nrd
         self.use_batch_norm = use_batch_norm
+        self.z_add = 0
         
 #         self.bag = nn.EmbeddingBag(self.num_classes*self.state_size, hd1)
         self.input_layer = nn.Linear(state_size * self.num_classes, hd1)
@@ -71,7 +72,7 @@ class Pilgrim(nn.Module):
         self.output_layer = nn.Linear(hidden_dim_for_output, output_dim)
 
     def forward(self, z):
-        x = F.one_hot(z.long(), num_classes=self.num_classes).view(z.size(0), -1).to(self.dtype)
+        x = F.one_hot(z.long()+self.z_add, num_classes=self.num_classes).view(z.size(0), -1).to(self.dtype)
 #         x = self.bag(z.long()+torch.arange(self.state_size, device=z.device, dtype=torch.int64)[None] * self.num_classes)
         x = self.input_layer(x)
 
