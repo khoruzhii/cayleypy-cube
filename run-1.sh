@@ -1,6 +1,10 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+# init tmp dir
+mkdir -p ./tmp
+export TMPDIR="$(pwd)/tmp"
+
 # ---------- helpers ----------
 train() {
     local gid="$1"      # group_id
