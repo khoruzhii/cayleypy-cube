@@ -10,7 +10,7 @@ train() {
     python train.py \
         --group_id  "$gid" \
         --target_id "$tid" \
-        --epochs    1024 \
+        --epochs    128 \
         --hd1       1024 \
         --hd2       256 \
         --nrd       1 \
@@ -53,32 +53,16 @@ test() {
         --B          1048576 \
         --device_id 0
 
-    python test.py \
-        --group_id   "$gid" \
-        --target_id  "$tid" \
-        --tests_num  100 \
-        --dataset    santa \
-        --epoch      1024 \
-        --model_id   "$model_id" \
-        --num_steps  $((2 * kmax)) \
-        --num_attempts 1 \
-        --verbose    0 \
-        --B          1048576 \
-        --device_id 0
 }
 
 # ---------- job list ----------
 triples=(
-  "000 0 15"  "000 1 15"  "000 2 15"
-  "001 0 25"  "001 1 25"  "001 2 25"
-  "002 0 55"  "002 1 55"  "002 2 75"
-  "003 0 65"  "003 1 65"  "003 2 100"
   "011 0 10"
   "012 0 10"
   "013 0 20"
   "014 0 35"
   "015 0 75"
-  "017 0 45"  "017 1 60"
+  "017 0 45"
   "018 0 110"
   "019 0 25"
   "020 0 28"
