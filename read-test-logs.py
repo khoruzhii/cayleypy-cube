@@ -47,4 +47,4 @@ for dataset in ['santa', 'rnd']:
         mean_res_joined = mean_res_joined.join(df_santa['puzzle_type'], how='left')
 
         print(f"\n\n------- epochs={epochs:3}, dataset={dataset:5} -------\n") 
-        print(mean_res_joined)
+        print(mean_res_joined.to_string())
