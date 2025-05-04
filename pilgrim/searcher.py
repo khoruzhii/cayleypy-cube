@@ -17,6 +17,7 @@ class Searcher:
         self.device = device or torch.device("cuda" if torch.cuda.is_available() else "cpu")
         self.hash_vec = torch.randint(0, int(1e15), (self.state_size,), device=self.device, dtype=torch.int64)
         self.verbose = verbose
+        self.counter = torch.zeros((3, 2), dtype=torch.int64)
     
     def get_unique_states(self, states, states_bad_hashed):
         """Filter unique states by removing duplicates based on hash."""
@@ -59,6 +60,7 @@ class Searcher:
         """Perform a greedy step to find the best neighbors."""
         idx0 = torch.arange(states.size(0), device=self.device).repeat_interleave(self.n_gens)
         moves = torch.arange(self.n_gens, device=self.device).repeat(states.size(0))
+        self.counter[0, 0] += moves.size(0); self.counter[0, 1] += 1;
 
         neighbors_hashed = torch.empty(moves.size(0), dtype=torch.int64, device=self.device)
         for i in range(0, states.size(0), self.batch_size):
@@ -66,12 +68,14 @@ class Searcher:
             neighbors = self.get_neighbors(batch_states).flatten(end_dim=1)
             neighbors_hashed[i*self.n_gens:(i+self.batch_size)*self.n_gens] = state2hash(neighbors, self.hash_vec, self.batch_size)
         idx1 = self.get_unique_hashed_states_idx(neighbors_hashed, states_bad_hashed)
+        self.counter[1, 0] += idx1.size(0); self.counter[1, 1] += 1;
         
         value = torch.empty(idx1.size(0), dtype=torch.float16, device=self.device)
         for i in range(0, idx1.size(0), self.batch_size):
             batch_states = self.apply_move(states[idx0[idx1[i:i+self.batch_size]]], moves[idx1[i:i+self.batch_size]])
             value[i:i+self.batch_size] = self.pred_d(batch_states)[0]
         idx2 = torch.argsort(value)[:B]
+        self.counter[2, 0] += idx2.size(0); self.counter[2, 1] += 1;
         
         next_states = torch.empty(idx2.size(0), self.state_size, dtype=states.dtype, device=self.device)
         for i in range(0, idx2.size(0), self.batch_size):

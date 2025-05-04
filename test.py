@@ -116,6 +116,8 @@ def main():
     
         solution_time_end = time.time()
         timestamp = time.strftime('%Y-%m-%d %H:%M:%S', time.localtime())
+        vertex_num = searcher.counter[:, 0] / searcher.counter[:, 1]
+        searcher.counter = torch.zeros((3, 2), dtype=torch.int64)
         
         if moves is not None:
             solution_length = len(moves)
@@ -126,7 +128,8 @@ def main():
                 "solution_length": solution_length,
                 "attempts": attempts + 1,
                 "time": round(solution_time_end - solution_time_start, 2),
-                "moves": moves.tolist()
+                "moves": moves.tolist(),
+                "vertex_num": f"[{vertex_num[0]:.2e}, {vertex_num[1]:.2e}, {vertex_num[2]:.2e}]"
             }
             
             # Print solution length for each solved cube
@@ -138,7 +141,8 @@ def main():
                 "solution_length": None,
                 "attempts": None,
                 "time": round(solution_time_end - solution_time_start, 2),
-                "moves": None
+                "moves": None,
+                "vertex_num": f"[{vertex_num[0]:.2e}, {vertex_num[1]:.2e}, {vertex_num[2]:.2e}]"
             }
             print(f"[{timestamp}] Solution {i+args.shift} not found")
         
