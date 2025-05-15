@@ -1,144 +1,178 @@
-# Zero-Human-Knowledge NN Training with Random Walks for Puzzle Solving
+# Machine Learning-based Puzzle Solver
 
-This repository contains the code for the publication [arxiv.org/abs/2212.01175](https://www.arxiv.org/abs/2502.13266).
+This code provides a novel approach using machine learning to solve puzzles represented as large graphs, such as Rubik’s cubes, using neural networks trained to estimate diffusion distances. Solutions are found using beam search.
 
-This program (as part of the CayleyPy project) provides tools to train and test models capable of solving NxNxN Rubik's cubes. It includes two main scripts: `train.py` for training a model and `test.py` for testing cube solutions. 
+## Overview
 
-**`train.py`** trains a model to predict the diffusion distance, which is calculated using random walks from the solved cube state. The diffusion distance serves as a metric that creates a good ordering between cube states, simplifying the search for solutions.
+The approach employs trained neural networks to efficiently navigate puzzle state spaces, significantly outperforming traditional algorithms and other ML methods. Specifically, the system:
 
-Once the model is trained, **`test.py`** can be used to solve Rubik's cubes using beam search. The model's solutions — including solution lengths and the number of attempts — are logged in result files.
+* Uses beam search guided by neural network predictions.
+* Achieves state-of-the-art results on Rubik’s cubes (3x3x3, 4x4x4, 5x5x5).
 
-Within 10 minutes of training, the model will be able to:
-- Solve a 3x3x3 cube in seconds.
-- Solve a 4x4x4 cube in under a minute.
+## Available Groups and Kmax
 
-This approach allows for efficient and quick solutions for Rubik's cubes of various sizes, using a model trained to predict diffusion distances. The proposed method achieves state-of-the-art (SOTA) results in solving Rubik's cubes with high efficiency and speed.
+| Group ID | Puzzle                        | Kmax used |
+| -------- | ----------------------------- | --------- |
+| 000      | Cube 2x2x2                    | 15        |
+| 001      | Cube 3x3x3                    | 26        |
+| 002      | Cube 4x4x4                    | 45        |
+| 003      | Cube 5x5x5                    | 65        |
+| 004      | Cube 6x6x6                    | 150       |
+| 011      | Wreath 6/6                    | 10        |
+| 012      | Wreath 7/7                    | 10        |
+| 013      | Wreath 12/12                  | 20        |
+| 014      | Wreath 21/21                  | 35        |
+| 015      | Wreath 33/33                  | 75        |
+| 017      | Globe 1/8                     | 60        |
+| 018      | Globe 1/16                    | 110       |
+| 019      | Globe 2/6                     | 25        |
+| 020      | Globe 3/4                     | 40        |
+| 021      | Globe 6/4                     | 40        |
+| 022      | Globe 6/8                     | 165       |
+| 023      | Globe 6/10                    | 170       |
+| 024      | Globe 3/33                    | 500       |
+| 025      | Globe 8/25                    | 700       |
+| 026      | Puzzle 8                      | 30        |
+| 027      | Puzzle 15                     | 80        |
+| 028      | Puzzle 24                     | 150       |
+| 029      | Puzzle 35                     | 200       |
+| 030      | Puzzle 48                     | 250       |
+| 031      | Puzzle 63                     | 300       |
+| 034      | LRX 10                        | 50        |
+| 035      | LRX 15                        | 100       |
+| 036      | LRX 20                        | 200       |
+| 037      | LRX 25                        | 300       |
+| 044      | Pancake 10                    | 15        |
+| 045      | Pancake 15                    | 25        |
+| 046      | Pancake 20                    | 30        |
+| 047      | Pancake 25                    | 40        |
+| 048      | Pancake 30                    | 45        |
+| 049      | Pancake 35                    | 55        |
+| 050      | Pancake 40                    | 60        |
+| 051      | Pancake 45                    | 65        |
+| 052      | Pancake 50                    | 70        |
+| 053      | Pancake 55                    | 75        |
+| 054      | Cube 3x3x3 (DeepCubeA metric) | 26        |
+
+(For reproducing results from Table 4, refer to provided scripts `traintest-tab4-santa.sh` and `traintest-tab4-rnd.sh`.)
 
 
+## Testing a Pre-trained Model
 
-## Getting Started
+Run these commands to solve puzzles using preloaded model weights:
 
-### Installation
 
-1. Clone the repository:
-    ```bash
-    git clone https://github.com/k1242/pilgrim.git
-    cd pilgrim
-    ```
-
-2. Install the required dependencies:
-    ```bash
-    pip install -r requirements.txt
-    ```
-
-## Running the Training Script
-
-You can run the `train.py` script to train a model on cube-based data. Each epoch model see 1M cubes sampled with K ∈ \[1, K_max\]. The model architecture is flexible, allowing different hidden layer sizes and residual blocks to be used.
-
-### Basic Usage
+**Cube 3x3x3 (UQTM metric)**
 
 ```bash
-python train.py --cube_size 4 --cube_type all --K_max 48 --hd1 1000 --hd2 500 --nrd 2 --epochs 256
+python test.py --group_id 1 --target_id 0 --tests_num 3 --dataset santa --num_steps 100 --verbose 1 --epoch 8192 --model_id 333 --B 262144 --device_id 0
 ```
 
-### Parameters:
+**Cube 4x4x4 (UQTM metric)**
 
-*   `--hd1`: Size of the first hidden layer (e.g., `2000`).
-*   `--hd2`: Size of the second hidden layer (`0` means no second layer).
-*   `--nrd`: Number of residual blocks (`0` means no residual blocks).
-*   `--epochs`: Number of training epochs.
-*   `--batch_size`: Batch size (default `10000`).
-*   `--lr`: Learning rate for the optimizer (default `0.001`).
-*   `--optimizer`: Optimizer, `Adam` or `AdamSF` means schedulefree module use (default `Adam`).
-*   `--activation`: Activation function, `relu` or `mish` (default `relu`).
-*   `--use_batch_norm`: Batch normalization usage, `True` or `False` (default `True`).
-*   `--K_min` and `--K_max`: Minimum and maximum values for random walks (default `1` and `30`).
-*   `--cube_size`: Cube size (e.g., `3` for 3x3x3 or `4` for 4x4x4).
-*   `--cube_type`: Cube move set (`qtm` for quarter-turn metric or `all` for all moves).
-*   `--device_id`: Device ID to use different graphics card (default `0`).
+```bash
+python test.py --group_id 2 --target_id 0 --tests_num 3 --dataset santa --num_steps 150 --verbose 1 --epoch 8192 --model_id 444 --B 262144 --device_id 0
+```
 
+**Cube 5x5x5 (UQTM metric)**
 
-#### Output
+```bash
+python test.py --group_id 3 --target_id 0 --tests_num 3 --dataset santa --num_steps 200 --verbose 1 --epoch 8192 --model_id 555 --B 524288 --device_id 0
+```
 
-When you run the training script, the following output and files are generated:
+**Cube 3x3x3 (QTM metric)**
 
-1. **Training Logs (CSV)**:
-    - A CSV file is created in the `logs/` directory that tracks the training progress. This file logs the following information for each epoch:
-        - `epoch`: The current epoch number.
-        - `train_loss`: The loss value at the end of each epoch.
-        - `vertices_seen`: The number of vertices (data points) seen in each epoch.
-        - `data_gen_time`: Time taken to generate the training data for the current epoch.
-        - `train_epoch_time`: Time taken to complete the training step for the current epoch.
-    - The file is saved with the naming convention: `train_{model_name}_{model_id}.csv`.
-
-2. **Model Weights (Checkpoint Files)**:
-    - The model weights are saved periodically during training:
-        - **Power of Two Epochs**: Weights are saved at epochs that are powers of two (e.g., epoch 1, 2, 4, 8, 16, ...). These weights are saved in the `weights/` directory with the filename:
-          `weights/{model_name}_{model_id}_e{epoch}.pth`.
-        - **Epoch 10,000 and 50,000**: If training reaches these epochs, weights are saved with the filename:
-          `weights/{model_name}_{model_id}_e10000.pth` and `weights/{model_name}_{model_id}_e50000.pth`.
-        - **Final Weights**: After the final epoch, the weights are saved with the filename:
-          `weights/{model_name}_{model_id}_e{final_epoch}_final.pth`.
-
-#### Model Name Generation
-
-The `model_name` is automatically generated based on the cube size, cube type, model architecture, and the number of parameters in the model. This helps uniquely identify the model being trained and is used for logging and saving model weights.
-
-The `model_name` is constructed using the following format:
-
-~~~~text
-cube{cube_size}_{cube_type}_{mode}_{num_parameters}M
-~~~~
-
-Where:
-
-*   **`mode`**: The architecture of the model, determined by the following:
-    *   `"MLP1"`: When both `hd2=0` and `nrd=0`.
-    *   `"MLP2"`: When `hd2>0` and `nrd=0`.
-    *   `"MLP2RB"`: When `hd2>0` and `nrd>0` (i.e., when residual blocks are included).
-*   **`num_parameters`**: The total number of trainable parameters in the model, rounded to millions (`M`).
-
-## Testing the Model
-
-You can test a trained **Pilgrim** model using the `test.py` script. This script loads the model, applies it to a set of cube states, and attempts to solve them using a beam search.
-
-### Basic Usage
-
-~~~~bash
-python test.py --cube_size 4 --cube_type all --weights weights/cube4_all_MLP2_01M_1728177387_e00256.pth --tests_num 10 --B 65536
-~~~~
-
-### Parameters
-
-*   `--cube_size`: The size of the cube (e.g., `4` for 4x4x4 cube).
-*   `--cube_type`: The cube type, either `qtm` (quarter-turn metric) or `all` (all moves).
-*   `--weights`: Path to the saved model weights.
-*   `--tests`: Path to the test dataset (optional). If not provided, it defaults to the dataset in `datasets/{cube_type}_cube{cube_size}.pt`.
-*   `--B`: Beam size for the beam search (default `4096`).
-*   `--tests_num`: Number of test cases to run (default `10`).
-*   `--device_id`: Device ID to use different graphics card.
-*   `--verbose`: Each step of beam search printed as tqdm, default is 0.
+```bash
+python test.py --group_id 54 --target_id 0 --tests_num 3 --dataset deepcubea --num_steps 100 --verbose 1 --epoch 8192 --model_id 333 --B 262144 --device_id 0
+```
 
 
-#### Output
+### Notes
+
+* `tests_num` — sets an upper limit on the number of scrambles to test from the beginning of the dataset.
+* `dataset` — selects the dataset to use:
+  * `santa` — official Kaggle Santa 2023 dataset.
+  * `rnd` — randomly generated dataset (100 scrambles) using 10,000(+1) random steps from the solved state.
+  * `deepcubea` (1000 DeepCubeA scrambles), `deepcubeadifficult` (69 DeepCubeA subset scrambles which was used in the third experiment), `deepcubeahard` (16 DeepCubeA subset scrambles that were not solved optimally with our approach) — available only for group `054` (3x3x3, QTM metric), useful for benchmarking against DeepCubeA and EfficientCube.
+* `device_id` — specifies which GPU to use for testing (default is `0`). Useful when multiple GPUs are available.
+
+Optimal solution lengths for the scrambles in the `deepcubeahard`: `[20, 20, 20, 21, 20, 20, 20, 20, 19, 20, 20, 19, 21, 20, 20, 20]`.
 
 
-*   **Log File**: The test results, including solution lengths and attempts, are saved to a log file in the `logs/` directory. The log file is named based on the model name, model ID, epoch, and beam size:
+## Output
 
-    ~~~~text
-    logs/test_{model_name}_{model_id}_{epoch}_B{beam_size}.json
-    ~~~~
+Test results saved in `logs/test_pXXX-tXXX-{dataset}_{model_id}_{epoch}_{B}.json`. Each file is a JSON array where `moves` contain generator indices used to reach the solved state for corresponding scramble. 
 
-    The log file contains the following information for each test case:
-    *   `test_num`: The index of the test case.
-    *   `solution_length`: The number of moves in the solution (if found).
-    *   `attempts`: The number of attempts made by the searcher to solve the test case.
-    *   `moves`: The sequence of moves for solving the cube, stored as a list.
-    
-    If no solution is found, the `solution_length`, `attempts`, and `moves` will be set to `None`.
-   
 
-## Support Us
+## Training Your Model
 
-If you find this project helpful or interesting, please consider giving it a ⭐. It helps others discover the project and motivates to keep improving it. Thank you for your support!
+Run training using your puzzle configuration:
 
+```bash
+python train.py --group_id <id> --target_id 0 --epochs <epochs> --hd1 <N_1> --hd2 <N_2> --nrd <N_r> --batch_size 10000 --K_max <K_max> --device_id 0
+```
+
+Example for 24-puzzle:
+```bash
+python train.py --group_id 28 --target_id 0 --epochs 16 --hd1 1024 --hd2 512 --nrd 1 --batch_size 10000 --K_max 100 --device_id 0
+```
+After training, use the assigned model_id (generated as int(time.time()) during training) to run beam search evaluation to use trained model:
+```bash
+python test.py --group_id 28 --target_id 0 --tests_num 3 --dataset rnd --num_steps 300 --num_attempts 1 --verbose 1 --epoch 16 --model_id {MODEL_ID} --B 65536 --device_id 0
+```
+Replace `{MODEL_ID}` with the actual numeric identifier saved in the logs.
+
+
+## Adding New Puzzle Groups
+
+To add your puzzle:
+
+1. Define your puzzle moves in `generators` folder as `pXXX.json`.
+2. Place a torch tensor `.pt` (1D tensor) in `targets`.
+3. Add scrambles dataset (2D tensor, each row as a scramble) to `datasets` folder.
+
+
+
+## Multi-Agent Evaluation
+
+For **Cube 3x3x3 (QTM)** on the **`deepcubea`** dataset, a multi-agent script `./traintest-multiagent.sh` automates:
+
+* training multiple agents (`group_id=054`, `target_id=0`)
+* testing each agent on the same scrambles
+* aggregating results: per-agent and ensemble statistics
+
+### What It Does
+
+After training and testing `A` agents, the script calls `read-test-logs-multiagent.py` to compute:
+
+* average solution length per agent
+* ensemble stats (shortest solution per scramble)
+* solved percentage
+* move sequences from the best agent per scramble
+
+### How to Run
+
+Script `./run.sh A TESTS_NUM EPOCH B` runs `A` agents, tests on `EPOCH` train and test, with `B` beam width and `TESTS_NUM` as number of scrambles to test.
+```bash
+./run.sh  4 10 16 65536
+```
+
+### Output Example
+
+```
+=== per agent ===
+          tests  solved_%  avg_len
+123456789   1000     97.3     21.4
+123456790   1000     98.2     20.8
+
+=== ensemble (shortest per scramble) ===
+solved %           : 99.1
+avg solution length: 19.95
+
+=== moves (winning agent) ===
+ test_num  solution_length   model_id            moves
+        0                20  123456790  [2, 0, 4, 5, 1, ...]
+        ...
+```
+
+All logs are saved in `logs/`, with results printed at the end.

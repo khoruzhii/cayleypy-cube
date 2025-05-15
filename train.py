@@ -16,20 +16,18 @@ def save_model_id(model_id):
     # Check if the file exists, if not create it and write the model_id
     if not os.path.exists(model_id_file):
         with open(model_id_file, "w") as f:
-            f.write(f"{model_id}\n")
-        print(f"Created new model_id file and saved model_id: {model_id}")
+            f.write(f"\n{model_id}")
     else:
         # Append the model_id to the file
         with open(model_id_file, "a") as f:
-            f.write(f"{model_id}\n")
-        print(f"Appended model_id: {model_id} to existing file")
+            f.write(f"\n{model_id}")
 
 def main():
     # Set up argument parser
     parser = argparse.ArgumentParser(description="Train Pilgrim Model")
     
     # Training and architecture hyperparameters
-    parser.add_argument("--epochs", type=int, default=100, help="Number of training epochs")
+    parser.add_argument("--epochs", type=int, default=256, help="Number of training epochs")
     parser.add_argument("--batch_size", type=int, default=10000, help="Batch size")
     parser.add_argument("--lr", type=float, default=0.001, help="Learning rate")
     parser.add_argument("--dropout", type=float, default=0.0, help="Dropout")
@@ -43,31 +41,38 @@ def main():
     parser.add_argument("--alpha", type=float, default=1, help="TD-learning parameter, avg 1/α steps.")
     
     # Cube parameters
-    parser.add_argument("--cube_size", type=int, default=4, help="Cube size (e.g., 4 for 4x4x4 cube)")
-    parser.add_argument("--cube_type", type=str, choices=["qtm", "all"], default="all", help="Cube type (qtm or all)")
+    parser.add_argument("--group_id", type=int, help="Group ID.")
+    parser.add_argument("--target_id", type=int, default=0, help="Target ID.")
     
     # Model architecture parameters
-    parser.add_argument("--hd1", type=int, default=2000, help="Size of the first hidden layer")
-    parser.add_argument("--hd2", type=int, default=1000, help="Size of the second hidden layer (0 means no second layer)")
-    parser.add_argument("--nrd", type=int, default=2, help="Number of residual blocks (0 means no residual blocks)")
+    parser.add_argument("--hd1", type=int, default=1024, help="Size of the first hidden layer")
+    parser.add_argument("--hd2", type=int, default=256, help="Size of the second hidden layer (0 means no second layer)")
+    parser.add_argument("--nrd", type=int, default=4, help="Number of residual blocks (0 means no residual blocks)")
     
     args = parser.parse_args()
 
     # Set device (GPU if available, otherwise CPU)
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu", args.device_id)
+#     device = torch.device("cpu")
     print(f"Start training with {device}.")
 
-    # Load cube data (moves and names)
-    all_moves, move_names = load_cube_data(args.cube_size, args.cube_type, device)
+    # Load group data (moves, names, target)
+    with open(f'generators/p{int(args.group_id):03d}.json', 'r') as f:
+        all_moves, move_names = json.load(f).values()
+        all_moves = torch.tensor(all_moves, dtype=torch.int64, device=device)
+    V0 = torch.load(f"targets/p{int(args.group_id):03d}-t{int(args.target_id):03d}.pt", weights_only=True, map_location=device)
 
-    # Derive important cube parameters from the loaded data
+    # Derive important group parameters from the loaded data
     n_gens = all_moves.size(0)  # Number of moves
     state_size = all_moves.size(1)  # Size of the state representation
-    face_size = state_size // 6  # Size of one face of the cube
+    num_classes = torch.unique(V0).size(0)
+    print(f"Group info:")
+    print(f"  # generators   {n_gens}")
+    print(f"  # classes      {num_classes}")
+    print(f"  state size     {state_size}")
 
     # Generate inverse moves
     inverse_moves = torch.tensor(generate_inverse_moves(move_names), dtype=torch.int64, device=device)
-    V0 = torch.arange(6, dtype=torch.int8, device=device).repeat_interleave(face_size)
 
     # Infer model mode based on hd1, hd2, and nrd
     if args.hd2 == 0 and args.nrd == 0:
@@ -81,6 +86,7 @@ def main():
 
     # Initialize the Pilgrim model
     model = Pilgrim(
+        num_classes=num_classes,
         state_size=state_size,
         hd1=args.hd1,
         hd2=args.hd2,
@@ -88,6 +94,9 @@ def main():
         dropout_rate=args.dropout,
         activation_function=args.activation
     ).to(device)
+    
+    if V0.min() < 0:
+        model.z_add = - V0.min().item()
     
     if len(args.weights) > 0:
         model.load_state_dict(torch.load(f"weights/{args.weights}.pth", weights_only=True, map_location=device))
@@ -98,7 +107,7 @@ def main():
     param_million = round(num_parameters / 1_000_000)  # Get the number of parameters in millions
 
     # Create the training name based on mode, hidden layers, residual blocks, and number of parameters
-    name = f"cube{args.cube_size}_{args.cube_type}_{mode}_{param_million:02d}M"
+    name = f"p{int(args.group_id):03d}-t{int(args.target_id):03d}"
     
     # Create the trainer
     trainer = Trainer(
@@ -133,10 +142,11 @@ def main():
     save_model_id(trainer.id)
 
     # Display model information
-    print(f"Model Mode: {mode}")
-    print(f"Model Name: {name}")
-    print(f'Model id: {trainer.id}')
-    print(f"Model has {num_parameters} parameters")
+    print("Model info:")
+    print(f"  mode          {mode}")
+    print(f"  name          {name}")
+    print(f'  id            {trainer.id}')
+    print(f"  # parameters  {num_parameters:_}")
 
     # Start the training process
     trainer.run()
