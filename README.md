@@ -10,6 +10,7 @@ The approach leverages a neural network to estimate diffusion distances to the g
 
 ![Architecture Overview](assets/fig.png)
 
+
 ## Installation
 
 ```bash
