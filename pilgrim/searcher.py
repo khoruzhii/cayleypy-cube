@@ -2,9 +2,36 @@ import torch
 import time
 from collections import deque
 from tqdm import tqdm
-from .utils import state2hash
 from .model import batch_process
+import os
+import shutil
 
+def lexsort(keys, dim=-1):
+    """Lexicographic sort for PyTorch tensors."""
+    idx = keys[0].argsort(dim=dim, stable=True)
+    for k in keys[1:]:
+        idx = idx.gather(dim, k.gather(dim, idx).argsort(dim=dim, stable=True))
+    return idx
+
+
+def state2hash_128bit(states, hash_vec_hi, hash_vec_lo, batch_size=2**14):
+    """Convert states to 128-bit hashes using two int64."""
+    n = states.size(0)
+    result = torch.empty((n, 2), dtype=torch.int64, device=states.device)
+    
+    for i in range(0, n, batch_size):
+        batch = states[i:i+batch_size].to(torch.int64)
+        result[i:i+batch_size, 0] = torch.sum(hash_vec_hi * batch, dim=1)
+        result[i:i+batch_size, 1] = torch.sum(hash_vec_lo * batch, dim=1)
+    
+    return result
+
+def clean_tree(tree_dir, last_j):
+    # Clean up tree files
+    for j in range(last_j + 1):
+        filepath = os.path.join(tree_dir, f"{j:04d}.pt")
+        if os.path.exists(filepath):
+            os.remove(filepath)
 
 class Searcher:
     def __init__(self, model, all_moves, V0, device=None, verbose=0):
@@ -15,28 +42,34 @@ class Searcher:
         self.n_gens = all_moves.size(0)
         self.state_size = all_moves.size(1)
         self.device = device or torch.device("cuda" if torch.cuda.is_available() else "cpu")
-        self.hash_vec = torch.randint(0, int(1e15), (self.state_size,), device=self.device, dtype=torch.int64)
+        self.tree_dir = "tree"
+        # 128-bit hash using two 64-bit vectors
+        self.hash_vec_hi = torch.randint(0, int(1e15), (self.state_size,), device=self.device, dtype=torch.int64)
+        self.hash_vec_lo = torch.randint(0, int(1e15), (self.state_size,), device=self.device, dtype=torch.int64)
         self.verbose = verbose
         self.counter = torch.zeros((3, 2), dtype=torch.int64)
     
-    def get_unique_states(self, states, states_bad_hashed):
-        """Filter unique states by removing duplicates based on hash."""
-        idx1 = torch.arange(states.size(0), dtype=torch.int64, device=states.device)
-        hashed = state2hash(states, self.hash_vec, self.batch_size)
-        mask1  = ~torch.isin(hashed, states_bad_hashed)
-        hashed = hashed[mask1]
-        hashed_sorted, idx2 = torch.sort(hashed)
-        mask2 = torch.concat((torch.tensor([True], device=states.device), hashed_sorted[1:] - hashed_sorted[:-1] > 0))
-        return states[mask1][idx2[mask2]], idx1[mask1][idx2[mask2]] 
+    def state2hash(self, states):
+        """Convert states to 128-bit hashes."""
+        return state2hash_128bit(states, self.hash_vec_hi, self.hash_vec_lo, self.batch_size)
     
-    def get_unique_hashed_states_idx(self, hashed, states_bad_hashed):
-        """Filter unique hashed states by removing duplicates"""
-        idx1 = torch.arange(hashed.size(0), dtype=torch.int64, device=hashed.device)
-        mask1  = ~torch.isin(hashed, states_bad_hashed)
-        hashed = hashed[mask1]
-        hashed_sorted, idx2 = torch.sort(hashed)
-        mask2 = torch.concat((torch.tensor([True], device=hashed.device), hashed_sorted[1:] - hashed_sorted[:-1] > 0))
-        return idx1[mask1][idx2[mask2]] 
+    def get_unique_hashed_states_idx(self, hashed):
+        """Filter unique hashed states by removing duplicates."""
+        n = hashed.size(0)
+        idx1 = torch.arange(n, dtype=torch.int64, device=hashed.device)
+        
+        # Sort lexicographically
+        idx2 = lexsort([hashed[:, 1], hashed[:, 0]])
+        hashed_sorted = hashed[idx2]
+        
+        # Find unique elements
+        mask = torch.cat([
+            torch.tensor([True], device=hashed.device),
+            (hashed_sorted[1:, 0] != hashed_sorted[:-1, 0]) | 
+            (hashed_sorted[1:, 1] != hashed_sorted[:-1, 1])
+        ])
+        
+        return idx1[idx2[mask]]
     
     def get_neighbors(self, states):
         """Return neighboring states for each state in the batch."""
@@ -56,27 +89,33 @@ class Searcher:
             moved_states[i:i+self.batch_size] = torch.gather(states[i:i+self.batch_size], 1, self.all_moves[moves[i:i+self.batch_size]])
         return moved_states
     
-    def do_greedy_step(self, states, states_bad_hashed, B=1000):
+    def do_greedy_step(self, states, B=1000):
         """Perform a greedy step to find the best neighbors."""
         idx0 = torch.arange(states.size(0), device=self.device).repeat_interleave(self.n_gens)
         moves = torch.arange(self.n_gens, device=self.device).repeat(states.size(0))
         self.counter[0, 0] += moves.size(0); self.counter[0, 1] += 1;
 
-        neighbors_hashed = torch.empty(moves.size(0), dtype=torch.int64, device=self.device)
+        # Compute hashes for all neighbors
+        neighbors_hashed = torch.empty((moves.size(0), 2), dtype=torch.int64, device=self.device)
         for i in range(0, states.size(0), self.batch_size):
             batch_states = states[i:i+self.batch_size]
             neighbors = self.get_neighbors(batch_states).flatten(end_dim=1)
-            neighbors_hashed[i*self.n_gens:(i+self.batch_size)*self.n_gens] = state2hash(neighbors, self.hash_vec, self.batch_size)
-        idx1 = self.get_unique_hashed_states_idx(neighbors_hashed, states_bad_hashed)
+            neighbors_hashed[i*self.n_gens:(i+self.batch_size)*self.n_gens] = self.state2hash(neighbors)
+        
+        idx1 = self.get_unique_hashed_states_idx(neighbors_hashed)
         self.counter[1, 0] += idx1.size(0); self.counter[1, 1] += 1;
         
+        # Evaluate unique states
         value = torch.empty(idx1.size(0), dtype=torch.float16, device=self.device)
         for i in range(0, idx1.size(0), self.batch_size):
             batch_states = self.apply_move(states[idx0[idx1[i:i+self.batch_size]]], moves[idx1[i:i+self.batch_size]])
             value[i:i+self.batch_size] = self.pred_d(batch_states)[0]
+        
+        # Select best B states
         idx2 = torch.argsort(value)[:B]
         self.counter[2, 0] += idx2.size(0); self.counter[2, 1] += 1;
         
+        # Generate next states
         next_states = torch.empty(idx2.size(0), self.state_size, dtype=states.dtype, device=self.device)
         for i in range(0, idx2.size(0), self.batch_size):
             next_states[i:i+self.batch_size] = self.apply_move(
@@ -85,67 +124,81 @@ class Searcher:
 
         return next_states, value[idx2], moves[idx1[idx2]], idx0[idx1[idx2]]
     
-    def check_stagnation(self, states_log):
-        """Check if the process is in a stagnation state."""
-        return torch.isin(torch.concat(list(states_log)[2:]), torch.concat(list(states_log)[:2])).all().item()
-
-    
-    def get_solution(self, state, B=2**12, num_steps=200, num_attempts=10, return_tree=False):
+    def get_solution(self, state, B=2**12, num_steps=200, num_attempts=1, return_tree=False):
         """Main solution-finding loop that attempts to solve the cube."""
-        states_bad_hashed = torch.tensor([], dtype=torch.int64, device=self.device)
-        for J in range(num_attempts):
-            states = state.unsqueeze(0).clone()
-            tree_move = -torch.ones((num_steps, B), dtype=torch.int64)
-            tree_idx = -torch.ones((num_steps, B), dtype=torch.int64)
-#             tree_value = -torch.ones((num_steps, B), dtype=torch.int64)
-            states_hash_log = deque(maxlen=4)
+        
+        # Create tree directory for temporary storage
+        os.makedirs(self.tree_dir, exist_ok=True)
+        
+        states = state.unsqueeze(0).clone()
+        
+        if self.verbose:
+            pbar = tqdm(range(num_steps))
+        else:
+            pbar = range(num_steps)
             
+        solved = False
+        last_j = -1
+        for j in pbar:
+            states, y_pred, moves, idx = self.do_greedy_step(states, B)
             if self.verbose:
-                pbar = tqdm(range(num_steps))
-            else:
-                pbar = range(num_steps)
-            for j in pbar:
-                states, y_pred, moves, idx = self.do_greedy_step(states, states_bad_hashed, B)
-                if self.verbose:
-                    pbar.set_description(
-                        f"  y_min = {y_pred.min().item():.1f}, y_mean = {y_pred.mean().item():.1f}, y_max = {y_pred.max().item():.1f}"
-                    )
-                states_hash_log.append(state2hash(states, self.hash_vec))
-                leaves_num = states.size(0)
-                tree_move[j, :leaves_num] = moves
-                tree_idx[j, :leaves_num] = idx
-
-                if (states == self.V0).all(dim=1).any():
-                    break
-                elif (j > 3 and self.check_stagnation(states_hash_log)):
-                    states_bad_hashed = torch.concat((states_bad_hashed, torch.concat(list(states_hash_log))))
-                    states_bad_hashed = torch.unique(states_bad_hashed)
-                    break
+                pbar.set_description(
+                    f"  y_min = {y_pred.min().item():.1f}, y_mean = {y_pred.mean().item():.1f}, y_max = {y_pred.max().item():.1f}"
+                )
+            
+            # Save layer to disk
+            layer_data = {
+                'moves': moves.cpu(),
+                'idx': idx.cpu()
+            }
+            torch.save(layer_data, os.path.join(self.tree_dir, f"{j:04d}.pt"))
+            last_j = j
 
             if (states == self.V0).all(dim=1).any():
+                solved = True
                 break
         
-        if not (states == self.V0).all(dim=1).any():
-            return None, J
+        if not solved:
+            clean_tree(self.tree_dir, last_j)
+            return None, 0
         
-        # Reverse the tree to reconstruct the path
-        tree_idx, tree_move = tree_idx[:j+1].flip((0,)), tree_move[:j+1].flip((0,))
-        
+        # Find position of solved state
         V0_pos = torch.nonzero((states == self.V0).all(dim=1), as_tuple=True)[0].item()
         
-        # Construct the path
-        path = [tree_idx[0, V0_pos].item()]
-        for k in range(1, j+1):
-            path.append(tree_idx[k, path[-1]].item())
+        # Reconstruct path backwards from solution
+        path = [V0_pos]
+        moves_list = []
         
-        moves_seq = torch.tensor([tree_move[k, path[k-1]] if k > 0 else tree_move[k, V0_pos] for k in range(j+1)], dtype=torch.int64)
+        # Load last layer to get the move that led to solution
+        layer = torch.load(os.path.join(self.tree_dir, f"{last_j:04d}.pt"))
+        moves_list.append(layer['moves'][V0_pos].item())
+        
+        # Trace back through tree
+        current_pos = V0_pos
+        for k in range(last_j - 1, -1, -1):
+            # Get parent index from current layer
+            current_layer = torch.load(os.path.join(self.tree_dir, f"{k+1:04d}.pt"))
+            parent_pos = current_layer['idx'][current_pos].item()
+            
+            # Get move from parent layer
+            parent_layer = torch.load(os.path.join(self.tree_dir, f"{k:04d}.pt"))
+            moves_list.append(parent_layer['moves'][parent_pos].item())
+            
+            current_pos = parent_pos
+            path.append(current_pos)
+        
+        # Reverse to get forward path
+        moves_list.reverse()
+        moves_seq = torch.tensor(moves_list, dtype=torch.int64)
+        
+        clean_tree(self.tree_dir, last_j)
+        
         if return_tree:
-            return moves_seq.flip((0,)), J, torch.concat((tree_idx.unsqueeze(0), tree_move.unsqueeze(0))).cpu()
+            return moves_seq, 0, None
         else:
-            return moves_seq.flip((0,)), J
+            return moves_seq, 0
     
     def pred_d(self, states):
         """Predict values for states using the model."""
         pred = batch_process(self.model, states, self.device, 2**14)
-#         pred[(states == self.V0).all(dim=-1)] = 0
         return pred.unsqueeze(0)
