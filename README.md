@@ -10,7 +10,6 @@ The approach leverages a neural network to estimate diffusion distances to the g
 
 ![Architecture Overview](assets/fig.png)
 
-
 ## Installation
 
 ```bash
@@ -98,6 +97,7 @@ python test.py --group_id 3 --target_id 0 --tests_num 3 --dataset santa --num_st
 ```bash
 python test.py --group_id 54 --target_id 0 --tests_num 3 --dataset deepcubea --num_steps 100 --verbose 1 --epoch 8192 --model_id 333 --B 262144 --device_id 0
 ```
+
 
 ## Available Groups and Kmax
 
