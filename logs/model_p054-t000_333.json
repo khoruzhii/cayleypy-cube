@@ -1,0 +1,23 @@
+{
+    "epochs": 8192,
+    "batch_size": 10000,
+    "lr": 0.001,
+    "dropout": 0.0,
+    "optimizer": "Adam",
+    "activation": "relu",
+    "use_batch_norm": true,
+    "K_min": 1,
+    "K_max": 26,
+    "weights": "",
+    "device_id": 0,
+    "alpha": 1,
+    "group_id": 54,
+    "target_id": 0,
+    "hd1": 700,
+    "hd2": 643,
+    "nrd": 4,
+    "model_name": "p054-t000",
+    "model_mode": "MLP2RB",
+    "model_id": 333,
+    "num_parameters": "4M"
+}
