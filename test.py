@@ -37,8 +37,6 @@ def main():
     # Set device (GPU if available, otherwise CPU)
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu", args.device_id)
 #     device = torch.device("cpu")
-    timestamp = time.strftime('%Y-%m-%d %H:%M:%S', time.localtime())
-    print(f"[{timestamp}] Start testing with {device}.")
 
     # Load group data (moves, names, target)
     with open(f'generators/p{int(args.group_id):03d}.json', 'r') as f:
@@ -54,7 +52,7 @@ def main():
     print(f"  # generators   {n_gens}")
     print(f"  # classes      {num_classes}")
     print(f"  state size     {state_size}")
-
+    
     # Generate inverse moves
     inverse_moves = torch.tensor(generate_inverse_moves(move_names), dtype=torch.int64, device=device)
 
@@ -95,6 +93,9 @@ def main():
         log_file_add = log_file_add + f"_skip{args.skip_list}"
     log_file = f"{log_dir}/test_p{int(args.group_id):03d}-t{int(args.target_id):03d}-{args.dataset}_{args.model_id}_{args.epoch}_B{args.B}{log_file_add}.json"
 
+    timestamp = time.strftime('%Y-%m-%d %H:%M:%S', time.localtime())
+    print(f"[{timestamp}] Start testing with {device}.")
+    
     results = []
     total_length = 0
     t1 = time.time()
