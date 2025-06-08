@@ -108,7 +108,7 @@ def count_parameters(model):
     """Count the trainable parameters in a model."""
     return sum(p.numel() for p in model.parameters() if p.requires_grad)
 
-def batch_process(model, data, device, batch_size):
+def batch_process(model, data, device, device_eval, batch_size):
     """
     Process data through a model in batches.
 
@@ -119,15 +119,14 @@ def batch_process(model, data, device, batch_size):
     :return: Concatenated tensor of model outputs
     """
     model.eval()
-    model.to(device)
 
     outputs = torch.empty(data.size(0), dtype=torch.float16, device=device)
 
     # Process each batch
     for i in range(0, data.size(0), batch_size):
-        batch = data[i:i+batch_size].to(device)
+        batch = data[i:i+batch_size]
         with torch.no_grad():
-            batch_output = model(batch).flatten()
-        outputs[i:i+batch_size] = batch_output
+            batch_output = model(batch.to(device_eval)).flatten()
+        outputs[i:i+batch_size] = batch_output.to(device)
 
     return outputs

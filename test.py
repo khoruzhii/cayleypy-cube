@@ -35,8 +35,8 @@ def main():
         info = json.load(json_file)
     
     # Set device (GPU if available, otherwise CPU)
-    device = torch.device("cuda" if torch.cuda.is_available() else "cpu", args.device_id)
-#     device = torch.device("cpu")
+    device_eval = torch.device("cuda" if torch.cuda.is_available() else "cpu", args.device_id)
+    device = torch.device("cpu")
 
     # Load group data (moves, names, target)
     with open(f'generators/p{int(args.group_id):03d}.json', 'r') as f:
@@ -63,7 +63,7 @@ def main():
                     use_batch_norm=info.get('use_batch_norm', True))
     model.load_state_dict(torch.load(
         f"weights/p{int(args.group_id):03d}-t{int(args.target_id):03d}_{args.model_id}_e{args.epoch:05d}.pth", 
-        weights_only=False, map_location=device
+        weights_only=False, map_location=device_eval
     ))
     model.eval()
     
@@ -82,7 +82,7 @@ def main():
     print(f"Test dataset size: {args.tests_num}")
 
     # Initialize Searcher object
-    searcher = Searcher(model=model, all_moves=all_moves, V0=V0, device=device, verbose=args.verbose)
+    searcher = Searcher(model=model, all_moves=all_moves, V0=V0, device=device, verbose=args.verbose, device_eval=device_eval)
 
     # Prepare log file
     os.makedirs(log_dir, exist_ok=True)
@@ -103,6 +103,7 @@ def main():
         if args.skip_list is not None and i+args.shift in args.skip_list:
             continue
         solution_time_start = time.time()
+#         print(f"{torch.sum(searcher.hash_vec * state.long()) = }")
         result = searcher.get_solution(
             state, B=args.B, 
             num_steps=args.num_steps, num_attempts=args.num_attempts, 
