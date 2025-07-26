@@ -3,6 +3,7 @@ import time
 from collections import deque
 from tqdm import tqdm
 from .utils import state2hash
+from .utils import get_mask_periodic
 from .model import batch_process
 
 
@@ -29,10 +30,11 @@ class Searcher:
         mask2 = torch.concat((torch.tensor([True], device=states.device), hashed_sorted[1:] - hashed_sorted[:-1] > 0))
         return states[mask1][idx2[mask2]], idx1[mask1][idx2[mask2]] 
     
-    def get_unique_hashed_states_idx(self, hashed, states_bad_hashed):
+    def get_unique_hashed_states_idx(self, hashed, states_bad_hashed, mask_periodic):
         """Filter unique hashed states by removing duplicates"""
         idx1 = torch.arange(hashed.size(0), dtype=torch.int64, device=hashed.device)
-        mask1  = ~torch.isin(hashed, states_bad_hashed)
+        mask1 = ~torch.isin(hashed, states_bad_hashed)
+        mask1 = mask1 & mask_periodic.view(-1)
         hashed = hashed[mask1]
         hashed_sorted, idx2 = torch.sort(hashed)
         mask2 = torch.concat((torch.tensor([True], device=hashed.device), hashed_sorted[1:] - hashed_sorted[:-1] > 0))
@@ -67,7 +69,8 @@ class Searcher:
             batch_states = states[i:i+self.batch_size]
             neighbors = self.get_neighbors(batch_states).flatten(end_dim=1)
             neighbors_hashed[i*self.n_gens:(i+self.batch_size)*self.n_gens] = state2hash(neighbors, self.hash_vec, self.batch_size)
-        idx1 = self.get_unique_hashed_states_idx(neighbors_hashed, states_bad_hashed)
+        mask_periodic = get_mask_periodic(states)
+        idx1 = self.get_unique_hashed_states_idx(neighbors_hashed, states_bad_hashed, mask_periodic)
         self.counter[1, 0] += idx1.size(0); self.counter[1, 1] += 1;
         
         value = torch.empty(idx1.size(0), dtype=torch.float16, device=self.device)

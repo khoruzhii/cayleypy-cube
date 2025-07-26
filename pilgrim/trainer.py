@@ -4,6 +4,7 @@ import time
 import pandas as pd
 import math
 from .model import Pilgrim
+from .utils import get_mask_periodic
 
 class Trainer:
     def __init__(self, 
@@ -41,6 +42,7 @@ class Trainer:
         """Perform a random step while avoiding inverse moves."""
         possible_moves = torch.ones((states.size(0), self.n_gens), dtype=torch.bool, device=self.device)
         possible_moves[torch.arange(states.size(0)), self.inverse_moves[last_moves]] = False
+        possible_moves = possible_moves & get_mask_periodic(states)
         next_moves = torch.multinomial(possible_moves.float(), 1).squeeze()
         new_states = torch.gather(states, 1, self.all_moves[next_moves])
         return new_states, next_moves
