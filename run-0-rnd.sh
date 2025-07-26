@@ -56,6 +56,32 @@ test() {
         --verbose    0 \
         --B          1048576 \
         --device_id 0
+
+    python test.py \
+        --group_id   "$gid" \
+        --target_id  "$tid" \
+        --tests_num  10 \
+        --dataset    rnd \
+        --epoch      16 \
+        --model_id   "$model_id" \
+        --num_steps  $((2 * kmax)) \
+        --num_attempts 1 \
+        --verbose    0 \
+        --B          1024 \
+        --device_id 0
+
+    python test.py \
+        --group_id   "$gid" \
+        --target_id  "$tid" \
+        --tests_num  10 \
+        --dataset    rnd \
+        --epoch      128 \
+        --model_id   "$model_id" \
+        --num_steps  $((2 * kmax)) \
+        --num_attempts 1 \
+        --verbose    0 \
+        --B          1024 \
+        --device_id 0
 }
 
 # ---------- job list ----------
