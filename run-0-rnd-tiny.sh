@@ -14,7 +14,7 @@ train() {
     python train.py \
         --group_id  "$gid" \
         --target_id "$tid" \
-        --epochs    128 \
+        --epochs    64 \
         --hd1       1024 \
         --hd2       256 \
         --nrd       1 \
@@ -49,7 +49,7 @@ test() {
         --target_id  "$tid" \
         --tests_num  10 \
         --dataset    rnd \
-        --epoch      128 \
+        --epoch      64 \
         --model_id   "$model_id" \
         --num_steps  $((2 * kmax)) \
         --num_attempts 1 \
@@ -64,6 +64,8 @@ triples=(
   "027 0 80"
   "028 0 150"
   "029 0 300"
+  "030 0 500"
+  "031 0 800"
 )
 
 # ---------- main loop ----------
