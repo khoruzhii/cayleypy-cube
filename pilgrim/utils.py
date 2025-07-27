@@ -47,7 +47,7 @@ def get_mask_periodic(states):
     return mask_periodic
 
 # sliding puzzle specific
-def state2im(state):
+def state2im(state: torch.tensor):
     n = int(math.sqrt(2 + state.size(0))-1)
     M = np.zeros((2*n-1,2*n-1), dtype=int)
     M[n-1:, n-1:] = np.concatenate(([0], state[:n**2-1])).reshape(n,n)
@@ -55,3 +55,13 @@ def state2im(state):
     M[:, np.arange(n-1)] = M[:, np.arange(n-1)+n]
     idx_hor, idx_ver = n-1-state[n*n-1], n-1-state[n*(n+1)-1]
     return M[idx_ver:idx_ver+n, idx_hor:idx_hor+n]
+
+# sliding puzzle specific
+def im2state(im: np.array):
+    n = im.shape[0]
+    r0, c0 = np.where(im==0)
+    r0, c0 = r0.item(), c0.item()
+    idx = np.roll(np.arange(n)[::-1], 1)
+    state_base = np.roll(np.roll(im, -r0, axis=0), -c0, axis=1).flatten()[1:]
+    state = np.concat((state_base, np.roll(idx, c0), np.roll(idx, r0)))
+    return torch.tensor(state, dtype=torch.int8)
