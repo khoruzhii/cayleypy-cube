@@ -34,8 +34,8 @@ test() {
     python test.py \
         --group_id   "$gid" \
         --target_id  "$tid" \
-        --tests_num  100 \
-        --dataset    rnd \
+        --tests_num  500 \
+        --dataset    deepcubea \
         --epoch      128 \
         --model_id   "$model_id" \
         --num_steps  $((2 * kmax)) \
@@ -47,7 +47,6 @@ test() {
 
 # ---------- job list ----------
 triples=(
-  "027 0 80"
   "028 0 120"
 )
 
