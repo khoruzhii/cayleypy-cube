@@ -1,13 +1,139 @@
-# Machine Learning-based Puzzle Solver
+# Zero-knowledge ML search for short paths on large Cayley graphs
 
-This code provides a novel approach using machine learning to solve puzzles represented as large graphs, such as Rubik’s cubes, using neural networks trained to estimate diffusion distances. Solutions are found using beam search.
+[![NeurIPS 2025 Spotlight](https://img.shields.io/badge/NeurIPS%202025-Spotlight-0b5fff.svg)](#)
+[![arXiv:2502.13266](https://img.shields.io/badge/arXiv-2502.13266-b31b1b.svg)](https://www.arxiv.org/pdf/2502.13266)
 
-## Overview
+**Lightweight, end-to-end PyTorch pipeline** — data generation → training → search — all in `torch`, optimized for massive GPU parallelism. This repository implements a novel ML approach for finding short paths on large **Cayley graphs** (e.g. across permutation puzzles such as the Rubik’s Cube) by training neural networks to estimate diffusion distances and using those predictions to guide an efficient beam search. This approach is **zero human knowledge** (no handcrafted heuristics or domain rules).
 
-The approach employs trained neural networks to efficiently navigate puzzle state spaces, significantly outperforming traditional algorithms and other ML methods. Specifically, the system:
+<p align="center">
+  <img src="assets/fig.png" alt="Architecture: diffusion-distance predictor + batched beam search" width="720">
+</p>
 
-* Uses beam search guided by neural network predictions.
-* Achieves state-of-the-art results on Rubik’s cubes (3x3x3, 4x4x4, 5x5x5).
+The same PyTorch pipeline works across distinct **Cayley graphs** without changing model architecture and hyperparameters. With one NVIDIA H100, model parameters (N₁ = 1024, N₂ = 256, Nᵣ = 1), beam width 2²⁰ and only 1.28×10⁸ training examples we achieve these results:
+
+<p align="center">
+
+| Puzzle            | Graph size        | Training (min) | Solving (min) | Avg. solution len. | Solved (%)     |
+|:------------------|:------------------:|---------------:|--------------:|------------------:|---------------:|
+| Rubik's Cube 3×3×3        | 4×10¹⁹            | 0.8            | 0.17          | 20.5 ± 0.1         | 100            |
+| Rubik's Cube 4×4×4        | 7×10⁴⁵            | 1.5            | 1.24          | 65.0 ± 1.0         | 94             |
+| Pancake Graph 55          | 3×10⁷³            | 1.4            | 3.49          | 50.0 ± 0.3         | 100            |
+| Klotski 6×6 (PBC)         | 2×10⁴¹            | 1.2            | 0.45          | 113 ± 2.0          | 100            |
+
+</p>
+
+Using more computations the method reaches 98% optimality on 3×3×3 (QTM) and outperforms the top Santa Kaggle 2023 submissions on 3×3×3, 4×4×4 and 5×5×5 in average solution length. On 3×3×3, the batched GPU beam search delivers **20× faster** path finding than the previous state of the art at comparable solution lengths.
+
+
+## Testing a Pre-trained Model
+
+Run these commands to solve puzzles using preloaded model weights:
+
+**Cube 3x3x3 (UQTM metric)**
+
+```bash
+python scripts/test.py --group_id 1 --target_id 0 --tests_num 3 --dataset santa --num_steps 100 --verbose 1 --epoch 8192 --model_id 333 --B 262144 --device_id 0
+```
+
+**Cube 4x4x4 (UQTM metric)**
+
+```bash
+python scripts/test.py --group_id 2 --target_id 0 --tests_num 3 --dataset santa --num_steps 150 --verbose 1 --epoch 8192 --model_id 444 --B 262144 --device_id 0
+```
+
+**Cube 5x5x5 (UQTM metric)**
+
+```bash
+python scripts/test.py --group_id 3 --target_id 0 --tests_num 3 --dataset santa --num_steps 200 --verbose 1 --epoch 8192 --model_id 555 --B 524288 --device_id 0
+```
+
+**Cube 3x3x3 (QTM metric)**
+
+```bash
+python scripts/test.py --group_id 54 --target_id 0 --tests_num 3 --dataset deepcubea --num_steps 100 --verbose 1 --epoch 8192 --model_id 333 --B 262144 --device_id 0
+```
+
+### Notes
+
+* `tests_num` — sets an upper limit on the number of scrambles to test from the beginning of the dataset.
+* `dataset` — selects the dataset to use:
+  * `santa` — official Kaggle Santa 2023 dataset.
+  * `rnd` — randomly generated dataset (100 scrambles) using 10,000(+1) random steps from the solved state.
+  * `deepcubea` (1000 DeepCubeA scrambles), `deepcubeadifficult` (69 DeepCubeA subset scrambles), `deepcubeahard` (16 DeepCubeA subset scrambles) — available only for group `054` (3x3x3, QTM metric), useful for benchmarking against DeepCubeA and EfficientCube.
+* `device_id` — specifies which GPU to use for testing (default is `0`). Useful when multiple GPUs are available.
+
+Optimal solution lengths for the scrambles in the `deepcubeahard`: `[20, 20, 20, 21, 20, 20, 20, 20, 19, 20, 20, 19, 21, 20, 20, 20]`.
+
+## Output
+
+Test results saved in `logs/test_pXXX-tXXX-{dataset}_{model_id}_{epoch}_{B}.json`. Each file is a JSON array where `moves` contain generator indices used to reach the solved state for corresponding scramble.
+
+## Training Your Model
+
+Run training using your puzzle configuration:
+
+```bash
+python scripts/train.py --group_id <id> --target_id 0 --epochs <epochs> --hd1 <N_1> --hd2 <N_2> --nrd <N_r> --batch_size 10000 --K_max <K_max> --device_id 0
+```
+
+Example for 24-puzzle:
+
+```bash
+python scripts/train.py --group_id 28 --target_id 0 --epochs 16 --hd1 1024 --hd2 512 --nrd 1 --batch_size 10000 --K_max 100 --device_id 0
+```
+
+After training, use the assigned model_id (generated as int(time.time()) during training) to run beam search evaluation to use trained model:
+
+```bash
+python scripts/test.py --group_id 28 --target_id 0 --tests_num 3 --dataset rnd --num_steps 300 --num_attempts 1 --verbose 1 --epoch 16 --model_id {MODEL_ID} --B 65536 --device_id 0
+```
+
+Replace `{MODEL_ID}` with the actual numeric identifier saved in the logs.
+
+## Adding New Puzzle Groups
+
+To add your puzzle:
+
+1. Define your puzzle moves in `generators` folder as `pXXX.json`.
+2. Place a torch tensor `.pt` (1D tensor) in `targets`.
+3. Add scrambles dataset (2D tensor, each row as a scramble) to `datasets` folder.
+
+## Multi-Agent Evaluation
+
+For **Cube 3x3x3 (QTM)** on the **`deepcubea`** dataset, a multi-agent script `scripts/traintest-multiagent.sh` automates:
+
+* training multiple agents (`group_id=054`, `target_id=0`)
+* testing each agent on the same scrambles
+* aggregating results: per-agent and ensemble statistics
+
+### What It Does
+
+After training and testing `A` agents, the script calls `scripts/read-test-logs-multiagent.py` to compute:
+
+* average solution length per agent
+* ensemble stats (shortest solution per scramble)
+* solved percentage
+* move sequences from the best agent per scramble
+
+### Output Example
+
+```text
+=== per agent ===
+          tests  solved_%  avg_len
+123456789   1000     97.3     21.4
+123456790   1000     98.2     20.8
+
+=== ensemble (shortest per scramble) ===
+solved %           : 99.1
+avg solution length: 19.95
+
+=== moves (winning agent) ===
+ test_num  solution_length   model_id            moves
+        0                20  123456790  [2, 0, 4, 5, 1, ...]
+        ...
+```
+
+All logs are saved in `logs/`, with results printed at the end.
 
 ## Available Groups and Kmax
 
@@ -55,123 +181,3 @@ The approach employs trained neural networks to efficiently navigate puzzle stat
 | 054      | Cube 3x3x3 (DeepCubeA metric) | 26        |
 
 (For reproducing results from Table 4, refer to provided scripts `traintest-tab4-santa.sh` and `traintest-tab4-rnd.sh`.)
-
-
-## Testing a Pre-trained Model
-
-Run these commands to solve puzzles using preloaded model weights:
-
-
-**Cube 3x3x3 (UQTM metric)**
-
-```bash
-python test.py --group_id 1 --target_id 0 --tests_num 3 --dataset santa --num_steps 100 --verbose 1 --epoch 8192 --model_id 333 --B 262144 --device_id 0
-```
-
-**Cube 4x4x4 (UQTM metric)**
-
-```bash
-python test.py --group_id 2 --target_id 0 --tests_num 3 --dataset santa --num_steps 150 --verbose 1 --epoch 8192 --model_id 444 --B 262144 --device_id 0
-```
-
-**Cube 5x5x5 (UQTM metric)**
-
-```bash
-python test.py --group_id 3 --target_id 0 --tests_num 3 --dataset santa --num_steps 200 --verbose 1 --epoch 8192 --model_id 555 --B 524288 --device_id 0
-```
-
-**Cube 3x3x3 (QTM metric)**
-
-```bash
-python test.py --group_id 54 --target_id 0 --tests_num 3 --dataset deepcubea --num_steps 100 --verbose 1 --epoch 8192 --model_id 333 --B 262144 --device_id 0
-```
-
-
-### Notes
-
-* `tests_num` — sets an upper limit on the number of scrambles to test from the beginning of the dataset.
-* `dataset` — selects the dataset to use:
-  * `santa` — official Kaggle Santa 2023 dataset.
-  * `rnd` — randomly generated dataset (100 scrambles) using 10,000(+1) random steps from the solved state.
-  * `deepcubea` (1000 DeepCubeA scrambles), `deepcubeadifficult` (69 DeepCubeA subset scrambles), `deepcubeahard` (16 DeepCubeA subset scrambles) — available only for group `054` (3x3x3, QTM metric), useful for benchmarking against DeepCubeA and EfficientCube.
-* `device_id` — specifies which GPU to use for testing (default is `0`). Useful when multiple GPUs are available.
-
-Optimal solution lengths for the scrambles in the `deepcubeahard`: `[20, 20, 20, 21, 20, 20, 20, 20, 19, 20, 20, 19, 21, 20, 20, 20]`.
-
-## Output
-
-Test results saved in `logs/test_pXXX-tXXX-{dataset}_{model_id}_{epoch}_{B}.json`. Each file is a JSON array where `moves` contain generator indices used to reach the solved state for corresponding scramble. 
-
-
-## Training Your Model
-
-Run training using your puzzle configuration:
-
-```bash
-python train.py --group_id <id> --target_id 0 --epochs <epochs> --hd1 <N_1> --hd2 <N_2> --nrd <N_r> --batch_size 10000 --K_max <K_max> --device_id 0
-```
-
-Example for 24-puzzle:
-```bash
-python train.py --group_id 28 --target_id 0 --epochs 16 --hd1 1024 --hd2 512 --nrd 1 --batch_size 10000 --K_max 100 --device_id 0
-```
-After training, use the assigned model_id (generated as int(time.time()) during training) to run beam search evaluation to use trained model:
-```bash
-python test.py --group_id 28 --target_id 0 --tests_num 3 --dataset rnd --num_steps 300 --num_attempts 1 --verbose 1 --epoch 16 --model_id {MODEL_ID} --B 65536 --device_id 0
-```
-Replace `{MODEL_ID}` with the actual numeric identifier saved in the logs.
-
-
-## Adding New Puzzle Groups
-
-To add your puzzle:
-
-1. Define your puzzle moves in `generators` folder as `pXXX.json`.
-2. Place a torch tensor `.pt` (1D tensor) in `targets`.
-3. Add scrambles dataset (2D tensor, each row as a scramble) to `datasets` folder.
-
-
-
-## Multi-Agent Evaluation
-
-For **Cube 3x3x3 (QTM)** on the **`deepcubea`** dataset, a multi-agent script `./traintest-multiagent.sh` automates:
-
-* training multiple agents (`group_id=054`, `target_id=0`)
-* testing each agent on the same scrambles
-* aggregating results: per-agent and ensemble statistics
-
-### What It Does
-
-After training and testing `A` agents, the script calls `read-test-logs-multiagent.py` to compute:
-
-* average solution length per agent
-* ensemble stats (shortest solution per scramble)
-* solved percentage
-* move sequences from the best agent per scramble
-
-### How to Run
-
-Script `./run.sh A TESTS_NUM EPOCH B` runs `A` agents, tests on `EPOCH` train and test, with `B` beam width and `TESTS_NUM` as number of scrambles to test.
-```bash
-./run.sh  4 10 16 65536
-```
-
-### Output Example
-
-```
-=== per agent ===
-          tests  solved_%  avg_len
-123456789   1000     97.3     21.4
-123456790   1000     98.2     20.8
-
-=== ensemble (shortest per scramble) ===
-solved %           : 99.1
-avg solution length: 19.95
-
-=== moves (winning agent) ===
- test_num  solution_length   model_id            moves
-        0                20  123456790  [2, 0, 4, 5, 1, ...]
-        ...
-```
-
-All logs are saved in `logs/`, with results printed at the end.
