@@ -1,4 +1,4 @@
-# A machine learning approach that beats Rubik’s cubes
+# Zero-Knowledge ML for Finding Short Paths on Large Cayley Graphs
 
 [![NeurIPS 2025 Spotlight](https://img.shields.io/badge/NeurIPS%202025-Spotlight-0b5fff.svg)](#)
 [![arXiv:2502.13266](https://img.shields.io/badge/arXiv-2502.13266-b31b1b.svg)](https://www.arxiv.org/pdf/2502.13266)
