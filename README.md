@@ -180,7 +180,7 @@ All logs are saved in `logs/`, with results printed at the end.
 | 053      | Pancake 55                    | 75        |
 | 054      | Cube 3x3x3 (DeepCubeA metric) | 26        |
 
-(For reproducing results from Table 4, refer to provided scripts `traintest-tab4-santa.sh` and `traintest-tab4-rnd.sh`, paper/solver-scrambles and paper/figure-scrambles contain generators and scrambles used in each specific experiment.)
+For reproducing results from Table 4, refer to provided scripts `traintest-tab4-santa.sh` and `traintest-tab4-rnd.sh`, paper/solver-scrambles and paper/figure-scrambles contain generators and scrambles used in each specific experiment. The classical 15-puzzle (no wrap-around) is not a Cayley graph: node degrees vary with the blank position, hence the state graph is not vertex-transitive. We include it as a non-Cayley baseline at separate branch [puzzle-15](https://github.com/khoruzhii/cayleypy-cube/tree/puzzle-15).
 
 ## Citation
 
