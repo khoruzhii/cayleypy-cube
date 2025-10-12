@@ -1,4 +1,4 @@
-# Zero-knowledge ML search for short paths on large Cayley graphs
+# A machine learning approach that beats Rubik’s cubes
 
 [![NeurIPS 2025 Spotlight](https://img.shields.io/badge/NeurIPS%202025-Spotlight-0b5fff.svg)](#)
 [![arXiv:2502.13266](https://img.shields.io/badge/arXiv-2502.13266-b31b1b.svg)](https://www.arxiv.org/pdf/2502.13266)
@@ -180,4 +180,32 @@ All logs are saved in `logs/`, with results printed at the end.
 | 053      | Pancake 55                    | 75        |
 | 054      | Cube 3x3x3 (DeepCubeA metric) | 26        |
 
-(For reproducing results from Table 4, refer to provided scripts `traintest-tab4-santa.sh` and `traintest-tab4-rnd.sh`.)
+(For reproducing results from Table 4, refer to provided scripts `traintest-tab4-santa.sh` and `traintest-tab4-rnd.sh`, paper/solver-scrambles and paper/figure-scrambles contain generators and scrambles used in each specific experiment.)
+
+## Citation
+
+If you use this work in research, please cite one of the following BibTeX entries.
+
+```bibtex
+% Proceedings version (preferred once the NeurIPS paper is out)
+@inproceedings{Chervov2025NeurIPSRubiks,
+  author    = {Alexander Chervov and Kirill Khoruzhii and Nikita Bukhal and Jalal Naghiyev and Vladislav Zamkovoy and Ivan Koltsov and Lyudmila Cheldieva and Arsenii Sychev and Arsenii Lenin and Mark Obozov and Egor Urvanov and Alexey M. Romanov},
+  title     = {A machine learning approach that beats Rubik’s cubes},
+  booktitle = {Proceedings of the 39th Conference on Neural Information Processing Systems (NeurIPS 2025)},
+  year      = {2025},
+  note      = {Spotlight},
+  url       = {https://neurips.cc/}
+}
+```
+
+```bibtex
+% arXiv preprint (use this if you are citing the preprint)
+@misc{Chervov2025arXivRubiks,
+  author        = {Alexander Chervov and Kirill Khoruzhii and Nikita Bukhal and Jalal Naghiyev and Vladislav Zamkovoy and Ivan Koltsov and Lyudmila Cheldieva and Arsenii Sychev and Arsenii Lenin and Mark Obozov and Egor Urvanov and Alexey M. Romanov},
+  title         = {A Machine Learning Approach That Beats Large Rubik's Cubes},
+  year          = {2025},
+  eprint        = {2502.13266},
+  archivePrefix = {arXiv},
+  url           = {https://arxiv.org/abs/2502.13266}
+}
+```
