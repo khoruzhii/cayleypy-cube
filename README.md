@@ -32,25 +32,25 @@ Run these commands to solve puzzles using preloaded model weights:
 **Cube 3x3x3 (UQTM metric)**
 
 ```bash
-python scripts/test.py --group_id 1 --target_id 0 --tests_num 3 --dataset santa --num_steps 100 --verbose 1 --epoch 8192 --model_id 333 --B 262144 --device_id 0
+python test.py --group_id 1 --target_id 0 --tests_num 3 --dataset santa --num_steps 100 --verbose 1 --epoch 8192 --model_id 333 --B 262144 --device_id 0
 ```
 
 **Cube 4x4x4 (UQTM metric)**
 
 ```bash
-python scripts/test.py --group_id 2 --target_id 0 --tests_num 3 --dataset santa --num_steps 150 --verbose 1 --epoch 8192 --model_id 444 --B 262144 --device_id 0
+python test.py --group_id 2 --target_id 0 --tests_num 3 --dataset santa --num_steps 150 --verbose 1 --epoch 8192 --model_id 444 --B 262144 --device_id 0
 ```
 
 **Cube 5x5x5 (UQTM metric)**
 
 ```bash
-python scripts/test.py --group_id 3 --target_id 0 --tests_num 3 --dataset santa --num_steps 200 --verbose 1 --epoch 8192 --model_id 555 --B 524288 --device_id 0
+python test.py --group_id 3 --target_id 0 --tests_num 3 --dataset santa --num_steps 200 --verbose 1 --epoch 8192 --model_id 555 --B 524288 --device_id 0
 ```
 
 **Cube 3x3x3 (QTM metric)**
 
 ```bash
-python scripts/test.py --group_id 54 --target_id 0 --tests_num 3 --dataset deepcubea --num_steps 100 --verbose 1 --epoch 8192 --model_id 333 --B 262144 --device_id 0
+python test.py --group_id 54 --target_id 0 --tests_num 3 --dataset deepcubea --num_steps 100 --verbose 1 --epoch 8192 --model_id 333 --B 262144 --device_id 0
 ```
 
 ### Notes
@@ -73,19 +73,19 @@ Test results saved in `logs/test_pXXX-tXXX-{dataset}_{model_id}_{epoch}_{B}.json
 Run training using your puzzle configuration:
 
 ```bash
-python scripts/train.py --group_id <id> --target_id 0 --epochs <epochs> --hd1 <N_1> --hd2 <N_2> --nrd <N_r> --batch_size 10000 --K_max <K_max> --device_id 0
+python train.py --group_id <id> --target_id 0 --epochs <epochs> --hd1 <N_1> --hd2 <N_2> --nrd <N_r> --batch_size 10000 --K_max <K_max> --device_id 0
 ```
 
 Example for 24-puzzle:
 
 ```bash
-python scripts/train.py --group_id 28 --target_id 0 --epochs 16 --hd1 1024 --hd2 512 --nrd 1 --batch_size 10000 --K_max 100 --device_id 0
+python train.py --group_id 28 --target_id 0 --epochs 16 --hd1 1024 --hd2 512 --nrd 1 --batch_size 10000 --K_max 100 --device_id 0
 ```
 
 After training, use the assigned model_id (generated as int(time.time()) during training) to run beam search evaluation to use trained model:
 
 ```bash
-python scripts/test.py --group_id 28 --target_id 0 --tests_num 3 --dataset rnd --num_steps 300 --num_attempts 1 --verbose 1 --epoch 16 --model_id {MODEL_ID} --B 65536 --device_id 0
+python test.py --group_id 28 --target_id 0 --tests_num 3 --dataset rnd --num_steps 300 --num_attempts 1 --verbose 1 --epoch 16 --model_id {MODEL_ID} --B 65536 --device_id 0
 ```
 
 Replace `{MODEL_ID}` with the actual numeric identifier saved in the logs.
@@ -100,7 +100,7 @@ To add your puzzle:
 
 ## Multi-Agent Evaluation
 
-For **Cube 3x3x3 (QTM)** on the **`deepcubea`** dataset, a multi-agent script `scripts/traintest-multiagent.sh` automates:
+For **Cube 3x3x3 (QTM)** on the **`deepcubea`** dataset, a multi-agent script `traintest-multiagent.sh` automates:
 
 * training multiple agents (`group_id=054`, `target_id=0`)
 * testing each agent on the same scrambles
@@ -108,7 +108,7 @@ For **Cube 3x3x3 (QTM)** on the **`deepcubea`** dataset, a multi-agent script `s
 
 ### What It Does
 
-After training and testing `A` agents, the script calls `scripts/read-test-logs-multiagent.py` to compute:
+After training and testing `A` agents, the script calls `read-test-logs-multiagent.py` to compute:
 
 * average solution length per agent
 * ensemble stats (shortest solution per scramble)
@@ -180,7 +180,7 @@ All logs are saved in `logs/`, with results printed at the end.
 | 053      | Pancake 55                    | 75        |
 | 054      | Cube 3x3x3 (DeepCubeA metric) | 26        |
 
-For reproducing results from Table 4, refer to provided scripts `traintest-tab4-santa.sh` and `traintest-tab4-rnd.sh`, paper/solver-scrambles and paper/figure-scrambles contain generators and scrambles used in each specific experiment. The classical 15-puzzle (no wrap-around) is not a Cayley graph: node degrees vary with the blank position, hence the state graph is not vertex-transitive. We include it as a non-Cayley baseline at separate branch [puzzle-15](https://github.com/khoruzhii/cayleypy-cube/tree/puzzle-15).
+For reproducing results from Table 4, refer to provided `traintest-tab4-santa.sh` and `traintest-tab4-rnd.sh`, paper/solver-scrambles and paper/figure-scrambles contain generators and scrambles used in each specific experiment. The classical 15-puzzle (no wrap-around) is not a Cayley graph: node degrees vary with the blank position, hence the state graph is not vertex-transitive. We include it as a non-Cayley baseline at separate branch [puzzle-15](https://github.com/khoruzhii/cayleypy-cube/tree/puzzle-15).
 
 ## Citation
 
