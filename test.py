@@ -18,7 +18,6 @@ def parse_skip_list(s):
             return json.loads(s)
         return [int(x) for x in s.split(",") if x.strip() != ""]
     except Exception:
-        # Fallback: ignore invalid value
         return None
 
 def main():
@@ -29,20 +28,21 @@ def main():
     parser.add_argument("--model_id", type=int, required=True, help="Model ID.")
     parser.add_argument("--epoch", type=int, required=True, help="Epoch number to load.")
     parser.add_argument("--B", type=int, default=2**18, help="Beam size.")
-    parser.add_argument("--num_attempts", type=int, default=2, help="Number of restarts.")
     parser.add_argument("--num_steps", type=int, default=200, help="Max steps per beam search run.")
     parser.add_argument("--tests_num", type=int, default=10, help="Number of tests to run.")
     parser.add_argument("--device_id", type=int, default=0, help="CUDA device index.")
     parser.add_argument("--verbose", type=int, default=0, help="Use tqdm if verbose > 0.")
     parser.add_argument("--shift", type=int, default=0, help="Shift part of the dataset.")
     parser.add_argument("--skip_list", type=str, help="IDs to skip, e.g. '[2, 5]' or '2,5'.")
-    parser.add_argument("--return_tree", type=int, default=0, help="Save beam search tree to 'forest' folder.")
+    parser.add_argument("--cpu_beam", type=int, default=0, help="Store beam on CPU (0 or 1).")
+    parser.add_argument("--no_path", type=int, default=0, help="Don't store path, only length (0 or 1).")
 
     args = parser.parse_args()
     args.skip_list = parse_skip_list(args.skip_list)
+    args.cpu_beam = bool(args.cpu_beam)
+    args.no_path = bool(args.no_path)
 
     log_dir = "logs"
-    forest_dir = "forest"
     os.makedirs(log_dir, exist_ok=True)
 
     # Load model info produced during training
@@ -57,6 +57,10 @@ def main():
 
     timestamp = time.strftime("%Y-%m-%d %H:%M:%S", time.localtime())
     print(f"[{timestamp}] Start testing with device: {device}.")
+    if args.cpu_beam:
+        print(f"[{timestamp}] CPU beam mode enabled.")
+    if args.no_path:
+        print(f"[{timestamp}] No path mode enabled.")
 
     # Load group data (moves, names, target)
     with open(f"generators/p{int(args.group_id):03d}.json", "r") as f:
@@ -65,7 +69,6 @@ def main():
             all_moves = data["moves"]
             move_names = data["move_names"]
         else:
-            # Backward-compat: assume two values in order (moves, move_names)
             all_moves, move_names = data.values()
         all_moves = torch.tensor(all_moves, dtype=torch.int64, device=device)
 
@@ -88,7 +91,7 @@ def main():
     # Inverse moves
     inverse_moves = torch.tensor(generate_inverse_moves(move_names), dtype=torch.int64, device=device)
 
-    # Build model (fixed ReLU + BatchNorm inside Pilgrim; no activation/use_batch_norm args)
+    # Build model
     model = Pilgrim(
         num_classes=num_classes,
         state_size=state_size,
@@ -107,7 +110,7 @@ def main():
     # Mixed precision: use float16 only on CUDA
     if device.type == "cuda":
         model.half()
-        model.dtype = torch.float16  # used by Pilgrim for one-hot cast
+        model.dtype = torch.float16
     else:
         model.dtype = torch.float32
 
@@ -125,7 +128,14 @@ def main():
     print(f"Test dataset size: {args.tests_num}")
 
     # Initialize searcher
-    searcher = Searcher(model=model, all_moves=all_moves, V0=V0, device=device, verbose=args.verbose)
+    searcher = Searcher(
+        model=model, 
+        all_moves=all_moves, 
+        V0=V0, 
+        device=device, 
+        verbose=args.verbose,
+        cpu_beam=args.cpu_beam
+    )
 
     # Prepare log file path
     log_file_add = ""
@@ -133,6 +143,11 @@ def main():
         log_file_add += f"_shift{args.shift}"
     if args.skip_list is not None:
         log_file_add += f"_skip{args.skip_list}"
+    if args.cpu_beam:
+        log_file_add += "_cpubeam"
+    if args.no_path:
+        log_file_add += "_nopath"
+    
     log_file = (
         f"{log_dir}/test_p{int(args.group_id):03d}-t{int(args.target_id):03d}-"
         f"{args.dataset}_{args.model_id}_{args.epoch}_B{args.B}{log_file_add}.json"
@@ -148,21 +163,12 @@ def main():
             continue
 
         solution_time_start = time.time()
-        result = searcher.get_solution(
+        moves, length = searcher.get_solution(
             state,
             B=args.B,
             num_steps=args.num_steps,
-            num_attempts=args.num_attempts,
-            return_tree=args.return_tree,
+            no_path=args.no_path,
         )
-        moves, attempts = result[:2]
-
-        # Save search tree if requested
-        if args.return_tree and moves is not None:
-            os.makedirs(forest_dir, exist_ok=True)
-            idx = i + args.shift
-            torch.save(result[2].cpu(), f"{forest_dir}/tree_p{int(args.group_id):03d}-t{int(args.target_id):03d}_i{idx:04d}_B{args.B:08d}_{info['model_id']}.pt")
-            torch.save(state.cpu(), f"{forest_dir}/state_p{int(args.group_id):03d}-t{int(args.target_id):03d}_i{idx:04d}_B{args.B:08d}_{info['model_id']}.pt")
 
         solution_time_end = time.time()
         timestamp = time.strftime("%Y-%m-%d %H:%M:%S", time.localtime())
@@ -171,23 +177,20 @@ def main():
         vertex_num = searcher.counter[:, 0] / searcher.counter[:, 1]
         searcher.counter = torch.zeros((3, 2), dtype=torch.int64)
 
-        if moves is not None:
-            solution_length = len(moves)
-            total_length += solution_length
+        if length is not None:
+            total_length += length
             entry = {
                 "test_num": i + args.shift,
-                "solution_length": solution_length,
-                "attempts": attempts + 1,
+                "solution_length": length,
                 "time": round(solution_time_end - solution_time_start, 2),
-                "moves": moves.tolist(),
+                "moves": moves.tolist() if moves is not None else None,
                 "vertex_num": f"[{vertex_num[0]:.2e}, {vertex_num[1]:.2e}, {vertex_num[2]:.2e}]",
             }
-            print(f"[{timestamp}] Solution {i + args.shift}: Length = {solution_length}")
+            print(f"[{timestamp}] Solution {i + args.shift}: Length = {length}")
         else:
             entry = {
                 "test_num": i + args.shift,
                 "solution_length": None,
-                "attempts": None,
                 "time": round(solution_time_end - solution_time_start, 2),
                 "moves": None,
                 "vertex_num": f"[{vertex_num[0]:.2e}, {vertex_num[1]:.2e}, {vertex_num[2]:.2e}]",
@@ -196,7 +199,7 @@ def main():
 
         results.append(entry)
 
-        # Persist results after each test (overwrite with full list)
+        # Persist results after each test
         with open(log_file, "w") as f:
             json.dump(results, f, indent=4)
 

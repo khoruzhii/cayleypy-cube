@@ -1,23 +1,31 @@
 # searcher.py
 
 import torch
-import time
 from tqdm import tqdm
 from .utils import state2hash
 from .model import batch_process
 
 
 class Searcher:
-    def __init__(self, model, all_moves, V0, device=None, verbose=0):
-        self.model = model.to(device)
-        self.all_moves = all_moves
-        self.V0 = V0
+    def __init__(self, model, all_moves, V0, device=None, verbose=0, cpu_beam=False):
+        self.device = device or torch.device("cuda" if torch.cuda.is_available() else "cpu")
+        self.model = model.to(self.device)
+        self.cpu_beam = cpu_beam
+        
+        # Beam device: CPU if cpu_beam enabled, otherwise same as computation device
+        self.beam_device = torch.device('cpu') if cpu_beam else self.device
+        
+        # Move data structures to beam device
+        self.all_moves = all_moves.to(self.beam_device)
+        self.V0 = V0.to(self.beam_device)
+        
         self.batch_size = 2**14
         self.n_gens = all_moves.size(0)
         self.state_size = all_moves.size(1)
-        self.device = device or torch.device("cuda" if torch.cuda.is_available() else "cpu")
+        
+        # Hash vector on beam device (all operations except pred_d are on beam device)
         self.hash_vec = torch.randint(
-            0, int(1e15), (self.state_size,), device=self.device, dtype=torch.int64
+            0, int(1e15), (self.state_size,), device=self.beam_device, dtype=torch.int64
         )
         self.verbose = verbose
         # counter[0] – neighbors before dedup, counter[1] – after local dedup, counter[2] – beam size
@@ -38,9 +46,10 @@ class Searcher:
 
     def get_neighbors(self, states):
         """Return neighboring states for each state in the batch."""
+        device = self.beam_device
         neighbors = torch.empty(
             states.size(0), self.n_gens, self.state_size,
-            device=self.device, dtype=states.dtype
+            device=device, dtype=states.dtype
         )
         for i in range(0, states.size(0), self.batch_size):
             batch_states = states[i:i + self.batch_size]
@@ -53,9 +62,10 @@ class Searcher:
 
     def apply_move(self, states, moves):
         """Apply moves to states and return new states."""
+        device = self.beam_device
         moved_states = torch.empty(
             states.size(0), self.state_size,
-            device=self.device, dtype=states.dtype
+            device=device, dtype=states.dtype
         )
         for i in range(0, states.size(0), self.batch_size):
             batch_states = states[i:i + self.batch_size]
@@ -67,7 +77,7 @@ class Searcher:
 
     def do_greedy_step(self, states, B=1000):
         """Perform a greedy step with batched local deduplication and streaming global top-B."""
-        device = states.device
+        device = self.beam_device
         S = states.size(0)
 
         total_neighbors = S * self.n_gens
@@ -158,12 +168,13 @@ class Searcher:
 
         return next_states, next_values, next_moves, next_idx0
 
-    def get_solution(self, state, B=2**12, num_steps=200, num_attempts=10, return_tree=False):
-        """Main solution-finding loop. num_attempts is kept for compatibility but not used."""
-        states = state.unsqueeze(0).clone()
-        tree_move = -torch.ones((num_steps, B), dtype=torch.int64)
-        tree_idx = -torch.ones((num_steps, B), dtype=torch.int64)
-        J = 0  # single attempt
+    def get_solution(self, state, B=2**12, num_steps=200, no_path=False):
+        """Main solution-finding loop."""
+        states = state.unsqueeze(0).clone().to(self.beam_device)
+        
+        if not no_path:
+            tree_move = -torch.ones((num_steps, B), dtype=torch.int64)
+            tree_idx = -torch.ones((num_steps, B), dtype=torch.int64)
 
         if self.verbose:
             pbar = tqdm(range(num_steps))
@@ -180,22 +191,27 @@ class Searcher:
                     f"y_max = {y_pred.max().item():.1f}"
                 )
 
-            leaves_num = states.size(0)
-            tree_move[j, :leaves_num] = moves.cpu()
-            tree_idx[j, :leaves_num] = idx.cpu()
+            if not no_path:
+                leaves_num = states.size(0)
+                tree_move[j, :leaves_num] = moves.cpu()
+                tree_idx[j, :leaves_num] = idx.cpu()
 
-            if (states == self.V0.to(states.device)).all(dim=1).any():
+            if (states == self.V0).all(dim=1).any():
                 found = True
                 break
 
         if not found:
-            return None, J
+            return None, None
+
+        if no_path:
+            # Return None for moves and the solution length
+            return None, j + 1
 
         # Reverse time axis to reconstruct the path
         tree_idx, tree_move = tree_idx[:j + 1].flip((0,)), tree_move[:j + 1].flip((0,))
 
         V0_pos = torch.nonzero(
-            (states == self.V0.to(states.device)).all(dim=1), as_tuple=True
+            (states == self.V0).all(dim=1), as_tuple=True
         )[0].item()
 
         # Reconstruct index path backwards
@@ -209,14 +225,15 @@ class Searcher:
             dtype=torch.int64
         )
 
-        if return_tree:
-            return moves_seq.flip((0,)), J, torch.concat(
-                (tree_idx.unsqueeze(0), tree_move.unsqueeze(0))
-            )
-        else:
-            return moves_seq.flip((0,)), J
+        moves_seq = moves_seq.flip((0,))
+        return moves_seq, len(moves_seq)
 
     def pred_d(self, states):
         """Predict values for states using the model."""
-        pred = batch_process(self.model, states, self.device, 2**14)
-        return pred
+        if self.cpu_beam:
+            pred = batch_process(self.model, states, self.device, 2**14)
+            return pred.to(self.beam_device)
+        else:
+            # Everything on same device
+            pred = batch_process(self.model, states, self.device, 2**14)
+            return pred

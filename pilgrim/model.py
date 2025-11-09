@@ -105,9 +105,8 @@ def batch_process(model, data, device, batch_size):
     """
     model.eval()
 
-    outputs = torch.empty(data.size(0), dtype=torch.float16, device=device)
-
     # Process each batch
+    outputs = torch.empty(data.size(0), dtype=torch.float16, device=device)
     for i in range(0, data.size(0), batch_size):
         batch = data[i:i + batch_size].to(device)
         with torch.no_grad():
