@@ -104,7 +104,6 @@ def batch_process(model, data, device, batch_size):
     :return: Concatenated tensor of model outputs
     """
     model.eval()
-    model.to(device)
 
     outputs = torch.empty(data.size(0), dtype=torch.float16, device=device)
 

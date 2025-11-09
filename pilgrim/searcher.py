@@ -74,8 +74,10 @@ class Searcher:
         self.counter[0, 0] += total_neighbors
         self.counter[0, 1] += 1
 
-        # First pass: local deduplication in state batches, only collect neighbor ids
-        neighbor_ids_chunks = []
+        best_values = None
+        best_parent_idx = None
+        best_moves = None
+
         total_after_dedup = 0
 
         for start_state in range(0, S, self.batch_size):
@@ -85,9 +87,9 @@ class Searcher:
                 continue
 
             batch_states = states[start_state:end_state]  # [bs, state_size]
-            # neighbors_batch: [bs, n_gens, state_size]
-            neighbors_batch = self.get_neighbors(batch_states)
-            neighbors_flat = neighbors_batch.flatten(end_dim=1)  # [bs * n_gens, state_size]
+
+            neighbors_batch = self.get_neighbors(batch_states)  # [bs, n_gens, state_size]
+            neighbors_flat = neighbors_batch.flatten(0, 1)     # [bs * n_gens, state_size]
 
             hashed = state2hash(neighbors_flat, self.hash_vec, self.batch_size)
             unique_local = self.get_unique_hashed_states_idx(hashed)
@@ -96,14 +98,34 @@ class Searcher:
                 continue
 
             total_after_dedup += unique_local.size(0)
-            global_offset = start_state * self.n_gens
-            neighbor_ids_chunks.append(global_offset + unique_local)
+
+            neighbors_unique = neighbors_flat[unique_local]
+            parent_idx_local = unique_local // self.n_gens + start_state
+            moves_local = unique_local % self.n_gens
+
+            values_local = self.pred_d(neighbors_unique)
+
+            if best_values is None:
+                best_values = values_local
+                best_parent_idx = parent_idx_local
+                best_moves = moves_local
+            else:
+                best_values = torch.cat([best_values, values_local], dim=0)
+                best_parent_idx = torch.cat([best_parent_idx, parent_idx_local], dim=0)
+                best_moves = torch.cat([best_moves, moves_local], dim=0)
+
+            if best_values.size(0) > B:
+                k = min(B, best_values.size(0))
+                topk = torch.topk(best_values, k=k, largest=False)
+                best_values = best_values[topk.indices]
+                best_parent_idx = best_parent_idx[topk.indices]
+                best_moves = best_moves[topk.indices]
 
         self.counter[1, 0] += total_after_dedup
         self.counter[1, 1] += 1
 
-        if len(neighbor_ids_chunks) == 0:
-            # Fallback: no new neighbors, keep current beam
+        if best_values is None:
+            # No candidates produced, fallback to current beam
             dummy_values = torch.full(
                 (S,), float("inf"), dtype=torch.float16, device=device
             )
@@ -111,52 +133,25 @@ class Searcher:
             idx0_dummy = torch.arange(S, device=device, dtype=torch.int64)
             return states, dummy_values, dummy_moves, idx0_dummy
 
-        neighbor_ids_all = torch.cat(neighbor_ids_chunks, dim=0)  # [N_unique]
+        # Ensure final top-B truncation even if there was only one batch
+        if best_values.size(0) > B:
+            k = min(B, best_values.size(0))
+            topk = torch.topk(best_values, k=k, largest=False)
+            best_values = best_values[topk.indices]
+            best_parent_idx = best_parent_idx[topk.indices]
+            best_moves = best_moves[topk.indices]
 
-        # Second pass: streaming global top-B over unique neighbors
-        best_values = None
-        best_neighbor_ids = None
-
-        for start in range(0, neighbor_ids_all.size(0), self.batch_size):
-            end = min(start + self.batch_size, neighbor_ids_all.size(0))
-            ids_batch = neighbor_ids_all[start:end]
-
-            parent_idx_batch = ids_batch // self.n_gens
-            moves_batch = ids_batch % self.n_gens
-
-            parent_states_batch = states[parent_idx_batch]
-            neighbor_states_batch = self.apply_move(parent_states_batch, moves_batch)
-            values_batch = self.pred_d(neighbor_states_batch)
-
-            if best_values is None:
-                best_values = values_batch
-                best_neighbor_ids = ids_batch
-            else:
-                combined_values = torch.cat([best_values, values_batch], dim=0)
-                combined_ids = torch.cat([best_neighbor_ids, ids_batch], dim=0)
-
-                if combined_values.size(0) <= B:
-                    best_values = combined_values
-                    best_neighbor_ids = combined_ids
-                else:
-                    topk = torch.topk(combined_values, k=B, largest=False)
-                    best_values = combined_values[topk.indices]
-                    best_neighbor_ids = combined_ids[topk.indices]
-
-        # Now best_neighbor_ids and best_values hold up to B best neighbors
-        parent_idx = best_neighbor_ids // self.n_gens
-        moves_idx = best_neighbor_ids % self.n_gens
-
-        next_states = self.apply_move(states[parent_idx], moves_idx)
+        # Build next_states from parent indices and moves
+        next_states_raw = self.apply_move(states[best_parent_idx], best_moves)
 
         # Final deduplication over the resulting beam
-        hashed_B = state2hash(next_states, self.hash_vec, self.batch_size)
+        hashed_B = state2hash(next_states_raw, self.hash_vec, self.batch_size)
         unique_B = self.get_unique_hashed_states_idx(hashed_B)
 
-        next_states = next_states[unique_B]
+        next_states = next_states_raw[unique_B]
         next_values = best_values[unique_B]
-        next_moves = moves_idx[unique_B]
-        next_idx0 = parent_idx[unique_B]
+        next_moves = best_moves[unique_B]
+        next_idx0 = best_parent_idx[unique_B]
 
         self.counter[2, 0] += next_states.size(0)
         self.counter[2, 1] += 1
@@ -186,10 +181,10 @@ class Searcher:
                 )
 
             leaves_num = states.size(0)
-            tree_move[j, :leaves_num] = moves
-            tree_idx[j, :leaves_num] = idx
+            tree_move[j, :leaves_num] = moves.cpu()
+            tree_idx[j, :leaves_num] = idx.cpu()
 
-            if (states == self.V0).all(dim=1).any():
+            if (states == self.V0.to(states.device)).all(dim=1).any():
                 found = True
                 break
 
@@ -199,7 +194,9 @@ class Searcher:
         # Reverse time axis to reconstruct the path
         tree_idx, tree_move = tree_idx[:j + 1].flip((0,)), tree_move[:j + 1].flip((0,))
 
-        V0_pos = torch.nonzero((states == self.V0).all(dim=1), as_tuple=True)[0].item()
+        V0_pos = torch.nonzero(
+            (states == self.V0.to(states.device)).all(dim=1), as_tuple=True
+        )[0].item()
 
         # Reconstruct index path backwards
         path = [tree_idx[0, V0_pos].item()]
@@ -215,7 +212,7 @@ class Searcher:
         if return_tree:
             return moves_seq.flip((0,)), J, torch.concat(
                 (tree_idx.unsqueeze(0), tree_move.unsqueeze(0))
-            ).cpu()
+            )
         else:
             return moves_seq.flip((0,)), J
 
