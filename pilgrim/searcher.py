@@ -1,3 +1,5 @@
+# searcher.py
+
 import torch
 import time
 from tqdm import tqdm
@@ -124,7 +126,7 @@ class Searcher:
 
             parent_states_batch = states[parent_idx_batch]
             neighbor_states_batch = self.apply_move(parent_states_batch, moves_batch)
-            values_batch = self.pred_d(neighbor_states_batch)[0].to(torch.float16)
+            values_batch = self.pred_d(neighbor_states_batch)
 
             if best_values is None:
                 best_values = values_batch
@@ -220,4 +222,4 @@ class Searcher:
     def pred_d(self, states):
         """Predict values for states using the model."""
         pred = batch_process(self.model, states, self.device, 2**14)
-        return pred.unsqueeze(0)
+        return pred
